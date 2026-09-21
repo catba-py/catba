@@ -8,6 +8,7 @@ on:
 jobs:
   release:
     runs-on: ubuntu-latest
+    environment: pypi
     permissions:
       contents: write  # create the GitHub Release and upload artifacts
       id-token: write  # PyPI Trusted Publishing (OIDC)
@@ -29,20 +30,20 @@ jobs:
           test -n "$(ls dist/*.whl)"
           test -n "$(ls dist/*.tar.gz)"
 
-      - name: Create GitHub Release
+      - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           tag="${GITHUB_REF#refs/tags/}"
-          gh release create "$tag" dist/*.whl dist/*.tar.gz \
-            --title "$tag" \
-            --notes "CatBa $tag"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/*.whl dist/*.tar.gz --clobber
+          else
+            gh release create "$tag" dist/*.whl dist/*.tar.gz \
+              --title "$tag" \
+              --notes "CatBa $tag"
+          fi
 
-      # ── PyPI Trusted Publishing ──────────────────────────────────────
-      # Publishes to PyPI with no API token, via OIDC Trusted Publishing.
-      # Before this can run, register this repository as a Trusted Publisher
-      # for the `catba` project on PyPI:
-      #     https://docs.pypi.org/trusted-publishers/
-      # PyPI Trusted Publishing (OIDC) is registered for the `catba` project.
+      # PyPI Trusted Publishing (OIDC) is registered for the `catba` project
+      # under the `pypi` GitHub environment.
       - name: Publish to PyPI (Trusted Publishing)
         uses: pypa/gh-action-pypi-publish@release/v1
