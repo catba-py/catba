@@ -1,4 +1,4 @@
-# CatBa — Bootstrap Documentation
+# CatBa - Bootstrap Documentation
 
 ## Status
 
@@ -86,7 +86,7 @@ run project
 
 The bootstrap prepares the environment a CatBa project needs before the
 runtime starts. It is **not** a package manager and does not introduce a
-custom dependency format — dependencies come from `pyproject.toml`, resolved
+custom dependency format - dependencies come from `pyproject.toml`, resolved
 with standard Python packaging/pip behaviour. Nothing in `.catba/` is
 implemented yet.
 

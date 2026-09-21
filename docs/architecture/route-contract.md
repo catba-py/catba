@@ -235,8 +235,8 @@ a module-level or long-lived object is a bug.
 
 None of this exists. The marker types (`Response`, `JSON`, `Redirect`,
 error types) are not yet defined in code. This document fixes their
-conceptual contract so Phase 2 can implement them without redesigning
-the return model.
+conceptual contract so the return model can be implemented later without
+redesigning it.
 
 ---
 

@@ -167,7 +167,7 @@ and `ctx` is dropped regardless of outcome.
 None of this exists. The CLI surface (`catba dev`, `catba start`) is
 defined but reports "not implemented yet". There is no native runtime, no
 request layer, and no handler dispatch. This document defines the
-contract that future phases implement.
+contract that the future runtime implements.
 
 ---
 

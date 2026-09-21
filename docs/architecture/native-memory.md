@@ -185,8 +185,8 @@ the boundary more than once per request in the common path.
 ## Leak detection and CI (future)
 
 Native CI should use appropriate tooling where the platform supports it.
-Tools are chosen later based on platform support. None are added in
-Phase 1. Candidates, to be evaluated per platform:
+Tools are chosen later based on platform support. None are added now.
+Candidates, to be evaluated per platform:
 
 ```text
 AddressSanitizer

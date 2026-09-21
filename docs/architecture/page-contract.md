@@ -135,8 +135,8 @@ Inertia header). The page component is the same either way.
 None of this exists. There is no TSX compiler, no Vite integration, no
 SSR engine, and no Inertia protocol integration. The template at
 `templates/app/app/page.tsx` holds only a minimal placeholder component.
-This document fixes the page contract so Phase 2 can implement rendering
-without redesigning the page model.
+This document fixes the page contract so the rendering pipeline can be
+implemented later without redesigning the page model.
 
 ---
 

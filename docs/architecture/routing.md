@@ -126,8 +126,8 @@ Validation fails fast. It does not silently produce a partial route tree.
 
 The router itself, route resolution, and the validation step do not
 exist. The CLI commands `catba dev` and `catba build` report "not
-implemented yet". This document fixes the routing semantics so Phase 2
-can implement the router without redesigning the route model.
+implemented yet". This document fixes the routing semantics so the router
+can be implemented later without redesigning the route model.
 
 ---
 
