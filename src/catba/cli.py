@@ -1,23 +1,23 @@
 """CatBa command-line interface.
 
-The command surface is defined here: ``create``, ``dev``, ``build``,
-``start`` and ``install``. None of these commands are implemented yet; each
-reports that it is unavailable in the current pre-runtime phase. ``--help``
-and ``--version`` are fully wired.
-
-``catba install`` is intended to install the dependencies declared by the
-project's ``pyproject.toml`` using standard Python packaging behaviour
-(no custom resolver, no ``catba install <package>`` form).
+The command surface: ``create``, ``dev``, ``build``, ``start``, ``install``.
+``dev`` and ``install`` are implemented; ``build`` and ``start`` are not
+implemented yet (they require SSR and the production server). ``--help`` and
+``--version`` are fully wired.
 """
 
 import argparse
+import os
+import shutil
+import subprocess
 import sys
 
 from catba import __version__
+from catba.project import find_project_root
+from catba.routing import RouteError
 
 
 def build_parser():
-    """Construct the top-level argument parser and subcommand surface."""
     parser = argparse.ArgumentParser(
         prog="catba",
         description="CatBa: a Python web framework and runtime.",
@@ -33,14 +33,20 @@ def build_parser():
         metavar="COMMAND",
         title="commands",
     )
-    subparsers.add_parser(
+
+    p_create = subparsers.add_parser(
         "create",
-        help="scaffold a new CatBa project (not implemented yet)",
+        help="scaffold a new CatBa project",
     )
-    subparsers.add_parser(
+    p_create.add_argument("name", help="project directory name")
+
+    p_dev = subparsers.add_parser(
         "dev",
-        help="run the project in development mode (not implemented yet)",
+        help="run the project in development mode",
     )
+    p_dev.add_argument("--host", default="127.0.0.1")
+    p_dev.add_argument("--port", type=int, default=8000)
+
     subparsers.add_parser(
         "build",
         help="build the project for production (not implemented yet)",
@@ -51,21 +57,64 @@ def build_parser():
     )
     subparsers.add_parser(
         "install",
-        help="install project dependencies from pyproject.toml (not implemented yet)",
+        help="install project dependencies from pyproject.toml",
     )
     return parser
 
 
 def main(argv=None):
-    """Entry point for the ``catba`` console script."""
     parser = build_parser()
     args = parser.parse_args(argv)
     if args.command is None:
         parser.print_help()
         return 0
-    # Pre-runtime phase: the command names exist, the behaviour does not.
+    if args.command == "dev":
+        return _dev(args)
+    if args.command == "install":
+        return _install()
+    if args.command == "create":
+        return _create(args)
     print(f"catba {args.command}: not implemented yet", file=sys.stderr)
     return 1
+
+
+def _dev(args):
+    root = find_project_root()
+    if root is None:
+        print("catba dev: no CatBa project found (need pyproject.toml and catba.py)",
+              file=sys.stderr)
+        return 1
+    app_dir = os.path.join(root, "app")
+    from catba.runtime import App
+    from catba.transport import DevServer
+    try:
+        app = App(app_dir)
+    except RouteError as e:
+        print(f"catba dev: {e}", file=sys.stderr)
+        return 1
+    print(f"catba dev: http://{args.host}:{args.port}", file=sys.stderr)
+    DevServer(app, host=args.host, port=args.port).serve()
+    return 0
+
+
+def _install():
+    root = find_project_root()
+    if root is None:
+        print("catba install: no CatBa project found", file=sys.stderr)
+        return 1
+    return subprocess.call([sys.executable, "-m", "pip", "install", "-e", root])
+
+
+def _create(args):
+    template = os.path.join(os.path.dirname(__file__), "..", "..", "templates", "app")
+    template = os.path.normpath(template)
+    dest = os.path.join(os.getcwd(), args.name)
+    if os.path.exists(dest):
+        print(f"catba create: {args.name} already exists", file=sys.stderr)
+        return 1
+    shutil.copytree(template, dest)
+    print(f"catba create: created {args.name}", file=sys.stderr)
+    return 0
 
 
 if __name__ == "__main__":

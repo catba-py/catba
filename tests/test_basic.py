@@ -68,7 +68,7 @@ class TestCli(unittest.TestCase):
     def test_subcommand_not_implemented(self):
         err = io.StringIO()
         with contextlib.redirect_stderr(err):
-            rc = cli.main(["dev"])
+            rc = cli.main(["build"])
         self.assertEqual(rc, 1)
         self.assertIn("not implemented", err.getvalue())
 
