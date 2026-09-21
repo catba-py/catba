@@ -1,9 +1,16 @@
-// CatBa page component.
+// CatBa page: the UI boundary for the root page.
 //
-// This file reserves the location where a CatBa application will place its
-// React/TSX page components. TSX compilation and the rendering pipeline are
-// not implemented yet; this is only a minimal placeholder.
+// Receives props from route.py's GET handler. TSX compilation is not
+// implemented yet; this is a placeholder component.
 
-export default function Page() {
-  return <div>CatBa</div>;
+type Props = {
+    message: string
+}
+
+export default function Page({ message }: Props) {
+    return (
+        <main>
+            <h1>{message}</h1>
+        </main>
+    )
 }
