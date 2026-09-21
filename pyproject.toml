@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "catba"
+dynamic = ["version"]
+description = "A Python web framework and runtime."
+readme = "README.md"
+requires-python = ">=3.14"
+license = "MPL-2.0"
+authors = [
+    { name = "Lê Hùng Quang Minh (furimeo)", email = "224610210+furimeo@users.noreply.github.com" },
+]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+]
+
+[project.scripts]
+catba = "catba.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+version = { attr = "catba.__version__" }
