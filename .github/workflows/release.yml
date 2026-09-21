@@ -43,8 +43,6 @@ jobs:
       # Before this can run, register this repository as a Trusted Publisher
       # for the `catba` project on PyPI:
       #     https://docs.pypi.org/trusted-publishers/
-      # The step is gated off until that configuration is in place; remove
-      # the `if: false` guard to activate it.
+      # PyPI Trusted Publishing (OIDC) is registered for the `catba` project.
       - name: Publish to PyPI (Trusted Publishing)
-        if: false
         uses: pypa/gh-action-pypi-publish@release/v1
