@@ -4,7 +4,7 @@ import tempfile
 import unittest
 
 from catba.context import Request
-from catba.runtime import App
+from catba.runtime import App, to_http
 from catba.response import NotFound
 
 from tests.helpers import write_tree
@@ -12,6 +12,10 @@ from tests.helpers import write_tree
 
 def run(coro):
     return asyncio.run(coro)
+
+
+def serve(app, request):
+    return to_http(run(app.handle(request)))
 
 
 class TestMethodDispatch(unittest.TestCase):
@@ -30,7 +34,7 @@ class TestMethodDispatch(unittest.TestCase):
         app = self._app({
             "app/route.py": "async def GET(ctx):\n    return {'ok': True}\n",
         })
-        status, headers, body = run(app.handle(Request("GET", "/")))
+        status, headers, body = serve(app, Request("GET", "/"))
         self.assertEqual(status, 200)
         self.assertIn(b"ok", body)
 
@@ -38,7 +42,7 @@ class TestMethodDispatch(unittest.TestCase):
         app = self._app({
             "app/route.py": "def GET(ctx):\n    return {'ok': True}\n",
         })
-        status, _, body = run(app.handle(Request("GET", "/")))
+        status, _, body = serve(app, Request("GET", "/"))
         self.assertEqual(status, 200)
         self.assertIn(b"ok", body)
 
@@ -46,7 +50,7 @@ class TestMethodDispatch(unittest.TestCase):
         app = self._app({
             "app/route.py": "async def POST(ctx):\n    return {'created': True}\n",
         })
-        status, _, _ = run(app.handle(Request("POST", "/")))
+        status, _, _ = serve(app, Request("POST", "/"))
         self.assertEqual(status, 200)
 
     def test_put_patch_delete(self):
@@ -58,12 +62,12 @@ class TestMethodDispatch(unittest.TestCase):
             ),
         })
         for method in ("PUT", "PATCH", "DELETE"):
-            status, _, _ = run(app.handle(Request(method, "/")))
+            status, _, _ = serve(app, Request(method, "/"))
             self.assertEqual(status, 200)
 
     def test_404_no_route(self):
         app = self._app({"app/route.py": "async def GET(ctx): pass\n"})
-        status, _, _ = run(app.handle(Request("GET", "/missing")))
+        status, _, _ = serve(app, Request("GET", "/missing"))
         self.assertEqual(status, 404)
 
     def test_405_with_allow(self):
@@ -73,7 +77,7 @@ class TestMethodDispatch(unittest.TestCase):
                 "async def POST(ctx): return {}\n"
             ),
         })
-        status, headers, _ = run(app.handle(Request("DELETE", "/")))
+        status, headers, _ = serve(app, Request("DELETE", "/"))
         self.assertEqual(status, 405)
         allow = set(headers["Allow"].split(","))
         self.assertEqual(allow, {"GET", "POST"})
@@ -82,7 +86,7 @@ class TestMethodDispatch(unittest.TestCase):
         app = self._app({
             "app/route.py": "async def GET(ctx):\n    return {'message': 'hello'}\n",
         })
-        status, headers, body = run(app.handle(Request("HEAD", "/")))
+        status, headers, body = serve(app, Request("HEAD", "/"))
         self.assertEqual(status, 200)
         self.assertEqual(body, b"")
 
@@ -93,7 +97,7 @@ class TestMethodDispatch(unittest.TestCase):
                 "async def HEAD(ctx): return None\n"
             ),
         })
-        status, _, body = run(app.handle(Request("HEAD", "/")))
+        status, _, body = serve(app, Request("HEAD", "/"))
         self.assertEqual(status, 204)
         self.assertEqual(body, b"")
 
@@ -104,7 +108,7 @@ class TestMethodDispatch(unittest.TestCase):
                 "async def POST(ctx): return {}\n"
             ),
         })
-        status, headers, _ = run(app.handle(Request("OPTIONS", "/")))
+        status, headers, _ = serve(app, Request("OPTIONS", "/"))
         self.assertEqual(status, 200)
         allow = set(headers["Allow"].split(","))
         self.assertEqual(allow, {"GET", "POST"})
@@ -116,7 +120,7 @@ class TestMethodDispatch(unittest.TestCase):
                 "async def OPTIONS(ctx): return {'custom': True}\n"
             ),
         })
-        status, _, body = run(app.handle(Request("OPTIONS", "/")))
+        status, _, body = serve(app, Request("OPTIONS", "/"))
         self.assertEqual(status, 200)
         self.assertIn(b"custom", body)
 
@@ -124,7 +128,7 @@ class TestMethodDispatch(unittest.TestCase):
         app = self._app({
             "app/route.py": "async def GET(ctx):\n    raise ValueError('boom')\n",
         })
-        status, _, body = run(app.handle(Request("GET", "/")))
+        status, _, body = serve(app, Request("GET", "/"))
         self.assertEqual(status, 500)
         self.assertEqual(body, b"Internal Server Error")
 
@@ -135,7 +139,7 @@ class TestMethodDispatch(unittest.TestCase):
                 "async def GET(ctx):\n    raise NotFound('no user')\n"
             ),
         })
-        status, _, body = run(app.handle(Request("GET", "/")))
+        status, _, body = serve(app, Request("GET", "/"))
         self.assertEqual(status, 404)
         self.assertEqual(body, b"no user")
 

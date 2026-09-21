@@ -1,9 +1,10 @@
 """CatBa core: loads routes, dispatches HTTP methods, interprets results.
 
-The core consumes a :class:`~catba.context.Request` and produces an HTTP
-response tuple ``(status, headers, body_bytes)``. The transport layer is a
-thin adapter that parses raw HTTP into a Request and serializes the tuple
-back to the wire. Nothing in route handlers depends on any transport.
+The core consumes a :class:`~catba.context.Request` and produces a
+:class:`Result` (either :class:`HTTPResult` or :class:`PageData`). The
+transport or SSR layer calls :func:`to_http` to serialize a Result into the
+``(status, headers, body)`` tuple that goes on the wire. Nothing in route
+handlers depends on any transport.
 """
 
 import asyncio
@@ -11,6 +12,7 @@ import importlib.util
 import json
 import os
 import traceback
+from dataclasses import dataclass, field
 
 from catba.context import Context, Request
 from catba.response import (
@@ -22,6 +24,49 @@ from catba.response import (
     Response,
 )
 from catba.routing import METHODS, Route, RouteTable, discover_routes
+
+
+@dataclass
+class HTTPResult:
+    """A direct HTTP response: status, headers, body bytes."""
+    status: int
+    headers: dict = field(default_factory=dict)
+    body: bytes = b""
+
+
+@dataclass
+class PageData:
+    """Page data for a page route: the route URL and the handler's props.
+
+    Produced when a page route (has page.tsx) returns a bare dict. The future
+    SSR layer consumes this to render page.tsx. Without SSR, to_http
+    serializes the props as JSON so the dev transport is usable.
+    """
+    page_path: str
+    props: dict
+
+
+Result = HTTPResult | PageData
+
+
+def to_http(result):
+    """Serialize a Result into an HTTP tuple (status, headers, body).
+
+    PageData without an SSR layer becomes a JSON response of the props with a
+    marker header. When SSR is implemented, the SSR layer intercepts PageData
+    before this function is called.
+    """
+    if isinstance(result, HTTPResult):
+        return result.status, dict(result.headers), result.body
+    if isinstance(result, PageData):
+        body = json.dumps(result.props).encode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+            "Content-Length": str(len(body)),
+            "X-CatBa-Page": result.page_path,
+        }
+        return 200, headers, body
+    raise TypeError(f"unknown result type: {type(result).__name__}")
 
 
 def _load_module(route):
@@ -56,7 +101,7 @@ class App:
         return self._modules[route.module_name]
 
     async def handle(self, request):
-        """Dispatch a Request to a route handler, return (status, headers, body)."""
+        """Dispatch a Request, return a Result (HTTPResult or PageData)."""
         route, params = self.table.match(request.path)
         if route is None:
             return _not_found()
@@ -71,21 +116,21 @@ class App:
 
     async def _dispatch(self, request, route, module, available):
         method = request.method
-        # HEAD: prefer an explicit HEAD handler, fall back to GET with no body.
         if method == "HEAD":
             if "HEAD" in available:
                 return await self._invoke(module, request, "HEAD", route)
             if "GET" in available:
-                status, headers, body = await self._invoke(module, request, "GET", route)
-                return status, headers, b""
+                result = await self._invoke(module, request, "GET", route)
+                if isinstance(result, HTTPResult):
+                    return HTTPResult(result.status, dict(result.headers), b"")
+                return result
             return _method_not_allowed(available)
-        # OPTIONS: prefer an explicit handler, else advertise available methods.
         if method == "OPTIONS":
             if "OPTIONS" in available:
                 return await self._invoke(module, request, "OPTIONS", route)
             allow = ",".join(available) if available else ""
             headers = {"Allow": allow} if allow else {}
-            return 200, headers, b""
+            return HTTPResult(200, headers, b"")
         if method in available:
             return await self._invoke(module, request, method, route)
         return _method_not_allowed(available)
@@ -106,57 +151,63 @@ class App:
         return _interpret(result, route)
 
 
-# --- return interpretation ------------------------------------------------
-
 def _interpret(result, route):
-    """Turn a handler return value into an HTTP tuple (status, headers, body).
+    """Turn a handler return value into a Result.
 
-    Minimal interpretation: bare dict becomes JSON, Response/JSON/Redirect use
-    their own serialization, None becomes 204. The page-data vs JSON
-    distinction (based on has_page) is refined later.
+    A bare dict from a page route (has page.tsx) becomes PageData. A bare dict
+    from an API route becomes an HTTPResult with a JSON body. Explicit
+    Response/JSON/Redirect use their own serialization. None becomes 204.
     """
     if result is None:
-        return 204, {}, b""
+        return HTTPResult(204, {}, b"")
     if isinstance(result, Response):
-        return result.to_http()
+        status, headers, body = result.to_http()
+        return HTTPResult(status, headers, body)
     if isinstance(result, JSON):
-        return result.to_http()
+        status, headers, body = result.to_http()
+        return HTTPResult(status, headers, body)
     if isinstance(result, Redirect):
-        return result.to_http()
+        status, headers, body = result.to_http()
+        return HTTPResult(status, headers, body)
     if isinstance(result, dict):
-        body = json.dumps(result).encode("utf-8")
-        return 200, {"Content-Type": "application/json", "Content-Length": str(len(body))}, body
-    # Fallback: stringify.
+        if route.has_page:
+            return PageData(page_path=route.url, props=result)
+        return _json_ok(result)
     body = str(result).encode("utf-8")
-    return 200, {"Content-Type": "text/plain; charset=utf-8", "Content-Length": str(len(body))}, body
+    return HTTPResult(200, {"Content-Type": "text/plain; charset=utf-8",
+                            "Content-Length": str(len(body))}, body)
 
 
-# --- error responses -----------------------------------------------------
+def _json_ok(data):
+    body = json.dumps(data).encode("utf-8")
+    return HTTPResult(200, {"Content-Type": "application/json",
+                            "Content-Length": str(len(body))}, body)
+
 
 def _not_found():
     body = b"Not Found"
-    return 404, {"Content-Type": "text/plain; charset=utf-8", "Content-Length": str(len(body))}, body
+    return HTTPResult(404, {"Content-Type": "text/plain; charset=utf-8",
+                            "Content-Length": str(len(body))}, body)
 
 
 def _method_not_allowed(available):
     allow = ",".join(available)
     body = b"Method Not Allowed"
-    headers = {
-        "Allow": allow,
-        "Content-Type": "text/plain; charset=utf-8",
-        "Content-Length": str(len(body)),
-    }
-    return 405, headers, body
+    return HTTPResult(405, {"Allow": allow,
+                            "Content-Type": "text/plain; charset=utf-8",
+                            "Content-Length": str(len(body))}, body)
 
 
 def _http_error(e):
     body = e.message.encode("utf-8")
-    headers = {"Content-Type": "text/plain; charset=utf-8", "Content-Length": str(len(body))}
+    headers = {"Content-Type": "text/plain; charset=utf-8",
+               "Content-Length": str(len(body))}
     if isinstance(e, MethodNotAllowed) and e.allowed:
         headers["Allow"] = ",".join(e.allowed)
-    return e.status, headers, body
+    return HTTPResult(e.status, headers, body)
 
 
 def _server_error():
     body = b"Internal Server Error"
-    return 500, {"Content-Type": "text/plain; charset=utf-8", "Content-Length": str(len(body))}, body
+    return HTTPResult(500, {"Content-Type": "text/plain; charset=utf-8",
+                            "Content-Length": str(len(body))}, body)
