@@ -74,5 +74,50 @@ class TestArchitectureDocs(unittest.TestCase):
                     self.assertIn(term, text)
 
 
+class TestPythonCoreModules(unittest.TestCase):
+    """Verify the Python core module structure is intact."""
+
+    def test_context_exports(self):
+        from catba.context import Context, Headers, Request
+        self.assertTrue(callable(Context))
+        self.assertTrue(callable(Headers))
+        self.assertTrue(callable(Request))
+
+    def test_response_exports(self):
+        from catba import (
+            BadRequest, HTTPError, InternalServerError, JSON,
+            MethodNotAllowed, NotFound, Redirect, Response,
+        )
+        self.assertTrue(issubclass(BadRequest, HTTPError))
+        self.assertTrue(issubclass(NotFound, HTTPError))
+        self.assertTrue(issubclass(MethodNotAllowed, HTTPError))
+        self.assertTrue(issubclass(InternalServerError, HTTPError))
+        self.assertTrue(callable(JSON))
+        self.assertTrue(callable(Redirect))
+        self.assertTrue(callable(Response))
+
+    def test_routing_exports(self):
+        from catba.routing import Route, RouteError, RouteTable, discover_routes
+        self.assertTrue(callable(Route))
+        self.assertTrue(issubclass(RouteError, Exception))
+        self.assertTrue(callable(RouteTable))
+        self.assertTrue(callable(discover_routes))
+
+    def test_runtime_exports(self):
+        from catba.runtime import App, HTTPResult, PageData, to_http
+        self.assertTrue(callable(App))
+        self.assertTrue(callable(HTTPResult))
+        self.assertTrue(callable(PageData))
+        self.assertTrue(callable(to_http))
+
+    def test_transport_exports(self):
+        from catba.transport import DevServer
+        self.assertTrue(callable(DevServer))
+
+    def test_project_exports(self):
+        from catba.project import find_project_root
+        self.assertTrue(callable(find_project_root))
+
+
 if __name__ == "__main__":
     unittest.main()
