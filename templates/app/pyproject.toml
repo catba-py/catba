@@ -1,0 +1,12 @@
+[project]
+name = "app"
+version = "0.1.0"
+description = "A CatBa application."
+requires-python = ">=3.14"
+dependencies = [
+    "catba",
+]
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
