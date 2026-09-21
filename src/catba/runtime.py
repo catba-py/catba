@@ -9,6 +9,7 @@ handlers depends on any transport.
 
 import asyncio
 import importlib.util
+import inspect
 import json
 import os
 import traceback
@@ -139,7 +140,7 @@ class App:
         handler = getattr(module, method)
         ctx = Context(request)
         try:
-            if asyncio.iscoroutinefunction(handler):
+            if inspect.iscoroutinefunction(handler):
                 result = await handler(ctx)
             else:
                 result = handler(ctx)
