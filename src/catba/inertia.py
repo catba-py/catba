@@ -120,3 +120,39 @@ def add_vary_inertia(headers):
     else:
         headers["Vary"] = "X-Inertia"
     return headers
+
+
+def get_asset_version(project_root):
+    """Derive a deterministic asset version from the frontend build.
+
+    Hashes the Vite client build output to produce a stable version string.
+    Returns a fixed dev version if no build exists yet.
+
+    The version does not use timestamps, random values, or machine-specific
+    paths. It is stable across requests for the same build.
+    """
+    import hashlib
+    import os
+
+    client_dir = os.path.join(project_root, ".catba", "generated", "client")
+    if not os.path.isdir(client_dir):
+        return "dev"
+
+    h = hashlib.sha256()
+    found = False
+    for name in sorted(os.listdir(client_dir)):
+        path = os.path.join(client_dir, name)
+        if os.path.isfile(path):
+            found = True
+            h.update(name.encode("utf-8"))
+            with open(path, "rb") as f:
+                while True:
+                    chunk = f.read(8192)
+                    if not chunk:
+                        break
+                    h.update(chunk)
+
+    if not found:
+        return "dev"
+
+    return h.hexdigest()[:16]
