@@ -48,12 +48,14 @@ class SSRWorker:
         self.project_root = project_root
         self.proc = None
         self._next_id = 1
+        self.client_bundle_url = None  # set by start() if client bundle exists
 
     def start(self):
         """Start the Node SSR worker.
 
         Finds the SSR bundle, starts the Node process, and waits for the
-        ready signal. Raises SSRError on failure.
+        ready signal. Also discovers the client bundle URL for hydration.
+        Raises SSRError on failure.
         """
         node = find_node()
         if not node:
@@ -90,6 +92,10 @@ class SSRWorker:
             raise SSRError("SSR worker sent invalid ready signal: " + ready_line)
         if not ready.get("ready"):
             raise SSRError("SSR worker not ready: " + str(ready))
+
+        # Discover the client bundle URL for hydration.
+        from catba.assets import get_client_bundle_url
+        self.client_bundle_url = get_client_bundle_url(self.project_root)
 
     def render(self, page_id, props):
         """Render a page to HTML.

@@ -66,6 +66,21 @@ class _Handler(BaseHTTPRequestHandler):
         pass
 
     def _serve(self):
+        # Serve static assets first (client bundle).
+        from catba.assets import serve_asset
+        project_root = getattr(self.server, "project_root", None)
+        if project_root:
+            asset_resp = serve_asset(self.path, project_root)
+            if asset_resp is not None:
+                status, headers, body = asset_resp
+                self.send_response(status)
+                for name, value in headers.items():
+                    self.send_header(name, value)
+                self.end_headers()
+                if body and self.command != "HEAD":
+                    self.wfile.write(body)
+                return
+
         length = int(self.headers.get("Content-Length", 0) or 0)
         raw = self.rfile.read(length) if length else b""
         req = _make_request(self.command, self.path, dict(self.headers), raw)
@@ -90,16 +105,18 @@ class _Handler(BaseHTTPRequestHandler):
 class DevServer:
     """Runs the core behind an http.server. Disposable; replaced by native later."""
 
-    def __init__(self, app, host="127.0.0.1", port=8000, ssr=None):
+    def __init__(self, app, host="127.0.0.1", port=8000, ssr=None, project_root=None):
         self.app = app
         self.host = host
         self.port = port
         self.ssr = ssr
+        self.project_root = project_root
 
     def serve(self):
         server = ThreadingHTTPServer((self.host, self.port), _Handler)
         server.app = self.app
         server.ssr = self.ssr
+        server.project_root = self.project_root
         try:
             server.serve_forever()
         except KeyboardInterrupt:

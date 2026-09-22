@@ -90,7 +90,8 @@ def _page_data_to_html(page_data, ssr):
             "Content-Length": str(len(body)),
         }, body
 
-    html = build_document(page_data.page_path, page_data.props, html_fragment)
+    html = build_document(page_data.page_path, page_data.props, html_fragment,
+                          client_bundle=getattr(ssr, "client_bundle_url", None))
     body = html.encode("utf-8")
     return 200, {
         "Content-Type": "text/html; charset=utf-8",
