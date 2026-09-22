@@ -120,8 +120,9 @@ def _methods_of(module):
 class App:
     """The CatBa core. Holds the route table and dispatches requests."""
 
-    def __init__(self, app_dir):
+    def __init__(self, app_dir, project_root=None):
         self.app_dir = app_dir
+        self.project_root = project_root
         self.table = discover_routes(app_dir)
         self._modules = {}
 
@@ -256,6 +257,15 @@ def serve_native(app, method, path, raw_headers, raw_body, ssr=None):
     """
     from urllib.parse import urlparse, parse_qs
     from catba.context import Headers
+
+    # Serve static assets (client bundle) before route dispatch.
+    project_root = getattr(app, "project_root", None)
+    if project_root:
+        from catba.assets import serve_asset
+        asset_resp = serve_asset(path, project_root)
+        if asset_resp is not None:
+            status, headers_dict, body_bytes = asset_resp
+            return status, headers_dict, body_bytes
 
     parsed = urlparse(path)
     query = {k: (v[0] if len(v) == 1 else v)

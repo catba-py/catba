@@ -158,3 +158,43 @@ def find_client_bundle(project_root):
         if name.endswith(".js"):
             return os.path.join(client_dir, name)
     return None
+
+
+def prepare_frontend(app_dir, project_root):
+    """Prepare the frontend for SSR: generate entries, build bundles.
+
+    Returns True if frontend was prepared (pages exist), False if not needed
+    (API-only project, no page routes). Raises FrontendError on failure.
+
+    Steps:
+      1. Discover routes from app_dir
+      2. Discover page modules from the route table
+      3. If no pages, return False (no frontend needed)
+      4. Generate manifest.json, ssr-entry.js, client-entry.js
+      5. Build the SSR bundle via Vite
+      6. Build the client bundle via Vite
+    """
+    from catba.routing import discover_routes
+    from catba.pages import discover_pages, has_page_routes
+    from catba.manifest import (
+        generate_manifest,
+        generate_ssr_entry,
+        generate_client_entry,
+    )
+
+    table = discover_routes(app_dir)
+    if not has_page_routes(table):
+        return False
+
+    pages = discover_pages(table, project_root)
+    gen_dir = os.path.join(project_root, ".catba", "generated")
+    os.makedirs(gen_dir, exist_ok=True)
+
+    generate_manifest(pages, gen_dir)
+    generate_ssr_entry(pages, gen_dir)
+    generate_client_entry(pages, gen_dir)
+
+    build_ssr(project_root)
+    build_client(project_root)
+
+    return True
