@@ -84,7 +84,7 @@ build_server() {
     plat_obj="$(compile_src "$PLATFORM_SRC")" || return 1
     objs="$objs $plat_obj"
     # Runtime sources (only those that exist)
-    for f in arena.c http_parser.c socket.c python_runtime.c bridge.c serializer.c server.c; do
+    for f in arena.c http_parser.c socket.c python_runtime.c bridge.c serializer.c server.c main.c; do
         if [ -f "$SRC/$f" ]; then
             local obj
             obj="$(compile_src "$SRC/$f")" || return 1
