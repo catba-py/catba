@@ -304,4 +304,48 @@ def serve_native(app, method, path, raw_headers, raw_body, ssr=None):
     request = Request(method, parsed.path, headers=headers, query=query,
                       cookies=cookies, body=body)
     result = asyncio.run(app.handle(request))
+    if ssr is None:
+        ssr = getattr(app, "ssr", None)
     return to_http(result, ssr=ssr)
+
+
+def prepare_native_ssr(app, app_dir, project_root):
+    """Prepare frontend and start SSR worker for the native runtime.
+
+    Called by the C runtime after loading the project. Returns True if SSR
+    was prepared, False if no page routes exist. Sets app.ssr on success.
+    """
+    from catba.pages import has_page_routes
+    from catba.routing import discover_routes
+    from catba.ssr import SSRWorker
+    from catba.frontend import prepare_frontend, FrontendError
+
+    table = discover_routes(app_dir)
+    if not has_page_routes(table):
+        return False
+
+    try:
+        if not prepare_frontend(app_dir, project_root):
+            return False
+    except FrontendError as e:
+        import sys
+        print(f"catba: frontend build failed: {e}", file=sys.stderr)
+        return False
+
+    try:
+        worker = SSRWorker(project_root)
+        worker.start()
+        app.ssr = worker
+        return True
+    except Exception as e:
+        import sys
+        print(f"catba: SSR worker failed to start: {e}", file=sys.stderr)
+        return False
+
+
+def stop_native_ssr(app):
+    """Stop the SSR worker if one is running. Called on native shutdown."""
+    worker = getattr(app, "ssr", None)
+    if worker:
+        worker.stop()
+        app.ssr = None

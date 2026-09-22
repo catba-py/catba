@@ -92,12 +92,21 @@ def _dev(args):
     from catba.runtime import App
     from catba.transport import DevServer
     try:
-        app = App(app_dir)
+        app = App(app_dir, project_root=root)
     except RouteError as e:
         print(f"catba dev: {e}", file=sys.stderr)
         return 1
+
+    # Prepare frontend and start SSR worker if page routes exist.
+    ssr = _prepare_ssr(app, app_dir, root)
+
     print(f"catba dev: http://{args.host}:{args.port}", file=sys.stderr)
-    DevServer(app, host=args.host, port=args.port).serve()
+    server = DevServer(app, host=args.host, port=args.port, ssr=ssr, project_root=root)
+    try:
+        server.serve()
+    finally:
+        if ssr:
+            ssr.stop()
     return 0
 
 
@@ -129,6 +138,35 @@ def _start(args):
 
     return subprocess.call([binary, "--app-dir", app_dir,
                            "--host", args.host, "--port", str(args.port)])
+
+
+def _prepare_ssr(app, app_dir, root):
+    """Prepare frontend and start SSR worker. Returns SSRWorker or None."""
+    from catba.pages import has_page_routes
+    from catba.routing import discover_routes
+    from catba.ssr import SSRWorker
+
+    table = discover_routes(app_dir)
+    if not has_page_routes(table):
+        return None
+
+    try:
+        from catba.frontend import prepare_frontend, FrontendError
+        prepared = prepare_frontend(app_dir, root)
+        if not prepared:
+            return None
+    except FrontendError as e:
+        print(f"catba: frontend build failed: {e}", file=sys.stderr)
+        return None
+
+    try:
+        worker = SSRWorker(root)
+        worker.start()
+        app.ssr = worker
+        return worker
+    except Exception as e:
+        print(f"catba: SSR worker failed to start: {e}", file=sys.stderr)
+        return None
 
 
 def _install():
