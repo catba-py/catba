@@ -6,7 +6,7 @@ on:
   pull_request:
 
 jobs:
-  ci:
+  python:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,3 +28,37 @@ jobs:
           python -m build
           test -n "$(ls dist/*.whl)"
           test -n "$(ls dist/*.tar.gz)"
+
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+
+      - name: Install native build deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq make
+
+      - name: Build and run native tests
+        run: |
+          cd native
+          chmod +x build.sh
+          ./build.sh tests
+
+      - name: Build native server
+        run: |
+          cd native
+          ./build.sh server
+
+      - name: Run sanitizer tests (ASan + UBSan + LSan)
+        run: |
+          cd native
+          SAN=asan ./build.sh tests
