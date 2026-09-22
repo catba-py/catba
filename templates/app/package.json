@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "build:ssr": "vite build --ssr .catba/generated/ssr-entry.js --outDir .catba/generated/ssr",
-    "build:client": "vite build --outDir .catba/generated/client",
+    "build:client": "vite build --outDir .catba/generated/client --assetsDir .",
     "build": "npm run build:ssr && npm run build:client"
   },
   "dependencies": {
