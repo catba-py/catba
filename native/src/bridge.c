@@ -10,6 +10,10 @@
  *   - The result tuple is owned (new reference) and Py_DECREF'd after unpacking.
  *   - Items extracted from the tuple are borrowed (valid while the tuple is alive).
  *   - All C strings in the response are arena-owned (no individual frees).
+ *
+ * GIL: the bridge acquires the GIL via PyGILState_Ensure on entry and
+ * releases it on exit. This is safe whether the caller already holds the
+ * GIL (main thread) or not (background thread).
  */
 
 #include "bridge.h"
@@ -48,58 +52,66 @@ int cb_bridge_handle(cb_python_ctx *ctx, cb_request *req,
         return -1;
     }
 
+    /* Acquire the GIL. Safe whether or not the calling thread already holds it. */
+    PyGILState_STATE gstate = PyGILState_Ensure();
+
+    int ret = 0;
+    PyObject *mod = NULL;
+    PyObject *serve = NULL;
+    PyObject *method_str = NULL;
+    PyObject *path_str = NULL;
+    PyObject *headers_dict = NULL;
+    PyObject *body_bytes = NULL;
+    PyObject *result = NULL;
+
     /* Look up serve_native in catba.runtime. */
-    PyObject *mod = PyImport_ImportModule("catba.runtime");
+    mod = PyImport_ImportModule("catba.runtime");
     if (!mod) {
         if (PyErr_Occurred()) PyErr_Print();
         fill_500(arena, resp);
-        return -1;
+        ret = -1;
+        goto cleanup;
     }
-    /* mod: owned (new reference). */
 
-    PyObject *serve = PyObject_GetAttrString(mod, "serve_native");
-    Py_DECREF(mod);
+    serve = PyObject_GetAttrString(mod, "serve_native");
     if (!serve) {
         if (PyErr_Occurred()) PyErr_Print();
         fill_500(arena, resp);
-        return -1;
+        ret = -1;
+        goto cleanup;
     }
-    /* serve: owned (new reference). */
 
     /* Build Python method string. */
-    PyObject *method_str = PyUnicode_FromString(req->method);
+    method_str = PyUnicode_FromString(req->method);
     if (!method_str) {
         if (PyErr_Occurred()) PyErr_Print();
-        Py_DECREF(serve);
         fill_500(arena, resp);
-        return -1;
+        ret = -1;
+        goto cleanup;
     }
 
     /* Build Python path+query string. Python side parses the query. */
     char full_target[4096];
-    if (req->query && req->query[0]) {
+    if (req->query && req->query[0])
         snprintf(full_target, sizeof(full_target), "%s?%s", req->path, req->query);
-    } else {
+    else
         snprintf(full_target, sizeof(full_target), "%s", req->path);
-    }
-    PyObject *path_str = PyUnicode_FromString(full_target);
+
+    path_str = PyUnicode_FromString(full_target);
     if (!path_str) {
         if (PyErr_Occurred()) PyErr_Print();
-        Py_DECREF(serve);
-        Py_DECREF(method_str);
         fill_500(arena, resp);
-        return -1;
+        ret = -1;
+        goto cleanup;
     }
 
     /* Build Python headers dict from native headers. */
-    PyObject *headers_dict = PyDict_New();
+    headers_dict = PyDict_New();
     if (!headers_dict) {
         if (PyErr_Occurred()) PyErr_Print();
-        Py_DECREF(serve);
-        Py_DECREF(method_str);
-        Py_DECREF(path_str);
         fill_500(arena, resp);
-        return -1;
+        ret = -1;
+        goto cleanup;
     }
     for (int i = 0; i < req->header_count; i++) {
         PyObject *k = PyUnicode_FromString(req->headers[i].name);
@@ -111,36 +123,26 @@ int cb_bridge_handle(cb_python_ctx *ctx, cb_request *req,
     }
 
     /* Build Python body bytes. */
-    PyObject *body_bytes;
     if (req->body && req->body_len > 0)
         body_bytes = PyBytes_FromStringAndSize(req->body, (Py_ssize_t)req->body_len);
     else
         body_bytes = PyBytes_FromStringAndSize("", 0);
     if (!body_bytes) {
         if (PyErr_Occurred()) PyErr_Print();
-        Py_DECREF(serve);
-        Py_DECREF(method_str);
-        Py_DECREF(path_str);
-        Py_DECREF(headers_dict);
         fill_500(arena, resp);
-        return -1;
+        ret = -1;
+        goto cleanup;
     }
 
     /* Call serve_native(app, method, path, headers, body). One crossing. */
-    PyObject *result = PyObject_CallFunctionObjArgs(
+    result = PyObject_CallFunctionObjArgs(
         serve, ctx->app, method_str, path_str, headers_dict, body_bytes, NULL);
-
-    /* Release all temporary Python objects. */
-    Py_DECREF(serve);
-    Py_DECREF(method_str);
-    Py_DECREF(path_str);
-    Py_DECREF(headers_dict);
-    Py_DECREF(body_bytes);
 
     if (!result) {
         if (PyErr_Occurred()) PyErr_Print();
         fill_500(arena, resp);
-        return -1;
+        ret = -1;
+        goto cleanup;
     }
     /* result: owned (new reference). Tuple of (status, headers, body). */
 
@@ -151,18 +153,18 @@ int cb_bridge_handle(cb_python_ctx *ctx, cb_request *req,
 
     if (!status_obj || !headers_obj || !body_obj) {
         if (PyErr_Occurred()) PyErr_Print();
-        Py_DECREF(result);
         fill_500(arena, resp);
-        return -1;
+        ret = -1;
+        goto cleanup;
     }
 
     /* Extract status as int. */
     long status = PyLong_AsLong(status_obj);
     if (status == -1 && PyErr_Occurred()) {
         PyErr_Print();
-        Py_DECREF(result);
         fill_500(arena, resp);
-        return -1;
+        ret = -1;
+        goto cleanup;
     }
     resp->status = (int)status;
 
@@ -173,9 +175,9 @@ int cb_bridge_handle(cb_python_ctx *ctx, cb_request *req,
         resp->header_names = (const char **)cb_arena_calloc(arena, (size_t)hcount, sizeof(char *));
         resp->header_values = (const char **)cb_arena_calloc(arena, (size_t)hcount, sizeof(char *));
         if (!resp->header_names || !resp->header_values) {
-            Py_DECREF(result);
             fill_500(arena, resp);
-            return -1;
+            ret = -1;
+            goto cleanup;
         }
         PyObject *key, *value;
         Py_ssize_t pos = 0;
@@ -198,16 +200,19 @@ int cb_bridge_handle(cb_python_ctx *ctx, cb_request *req,
         if (body_size > 0) {
             resp->body = cb_arena_dup(arena, body_buf, (size_t)body_size);
             resp->body_len = (size_t)body_size;
-        } else {
-            resp->body = NULL;
-            resp->body_len = 0;
         }
     } else {
         if (PyErr_Occurred()) PyErr_Clear();
-        resp->body = NULL;
-        resp->body_len = 0;
     }
 
-    Py_DECREF(result);
-    return 0;
+cleanup:
+    Py_XDECREF(result);
+    Py_XDECREF(body_bytes);
+    Py_XDECREF(headers_dict);
+    Py_XDECREF(path_str);
+    Py_XDECREF(method_str);
+    Py_XDECREF(serve);
+    Py_XDECREF(mod);
+    PyGILState_Release(gstate);
+    return ret;
 }
