@@ -212,3 +212,54 @@ def _server_error():
     body = b"Internal Server Error"
     return HTTPResult(500, {"Content-Type": "text/plain; charset=utf-8",
                             "Content-Length": str(len(body))}, body)
+
+
+def serve_native(app, method, path, raw_headers, raw_body):
+    """Single entry point for the native C runtime bridge.
+
+    Takes raw request data from C, parses query string, cookies, and body
+    (reusing the same logic as the Python transport), runs the handler, and
+    returns ``(status, headers_dict, body_bytes)``. The C bridge calls this
+    once per request: one native -> Python -> native crossing.
+    """
+    from urllib.parse import urlparse, parse_qs
+    from catba.context import Headers
+
+    parsed = urlparse(path)
+    query = {k: (v[0] if len(v) == 1 else v)
+             for k, v in parse_qs(parsed.query).items()}
+
+    headers = Headers(raw_headers)
+
+    # Parse cookies from the Cookie header.
+    cookies = {}
+    cookie_header = headers.get("Cookie", "")
+    if cookie_header:
+        for part in cookie_header.split(";"):
+            part = part.strip()
+            if "=" in part:
+                name, value = part.split("=", 1)
+                cookies[name.strip()] = value.strip()
+
+    # Parse body: JSON, form, or raw bytes.
+    body = raw_body if raw_body else b""
+    if isinstance(body, str):
+        body = body.encode("utf-8")
+    ctype = headers.get("Content-Type", "")
+    if body and "application/json" in ctype:
+        try:
+            body = json.loads(body)
+        except (ValueError, UnicodeDecodeError):
+            pass  # keep raw bytes
+    elif body and "application/x-www-form-urlencoded" in ctype:
+        try:
+            text = body.decode("utf-8")
+            body = {k: (v[0] if len(v) == 1 else v)
+                    for k, v in parse_qs(text).items()}
+        except UnicodeDecodeError:
+            pass  # keep raw bytes
+
+    request = Request(method, parsed.path, headers=headers, query=query,
+                      cookies=cookies, body=body)
+    result = asyncio.run(app.handle(request))
+    return to_http(result)
