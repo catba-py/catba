@@ -50,16 +50,18 @@ class PageData:
 Result = HTTPResult | PageData
 
 
-def to_http(result):
+def to_http(result, ssr=None):
     """Serialize a Result into an HTTP tuple (status, headers, body).
 
-    PageData without an SSR layer becomes a JSON response of the props with a
-    marker header. When SSR is implemented, the SSR layer intercepts PageData
-    before this function is called.
+    PageData with an SSR worker is rendered to HTML. Without an SSR worker,
+    PageData becomes a JSON response of the props with a marker header (the
+    pre-SSR dev behavior). HTTPResult is always passed through directly.
     """
     if isinstance(result, HTTPResult):
         return result.status, dict(result.headers), result.body
     if isinstance(result, PageData):
+        if ssr is not None:
+            return _page_data_to_html(result, ssr)
         body = json.dumps(result.props).encode("utf-8")
         headers = {
             "Content-Type": "application/json",
@@ -68,6 +70,32 @@ def to_http(result):
         }
         return 200, headers, body
     raise TypeError(f"unknown result type: {type(result).__name__}")
+
+
+def _page_data_to_html(page_data, ssr):
+    """Render PageData through the SSR worker into an HTML HTTP response.
+
+    Calls the SSR worker to render the React component, wraps the HTML
+    fragment in a full HTML document with hydration state, and returns
+    the HTTP tuple.
+    """
+    from catba.html import build_document
+
+    try:
+        html_fragment = ssr.render(page_data.page_path, page_data.props)
+    except Exception as e:
+        body = b"Internal Server Error"
+        return 500, {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Content-Length": str(len(body)),
+        }, body
+
+    html = build_document(page_data.page_path, page_data.props, html_fragment)
+    body = html.encode("utf-8")
+    return 200, {
+        "Content-Type": "text/html; charset=utf-8",
+        "Content-Length": str(len(body)),
+    }, body
 
 
 def _load_module(route):
@@ -214,13 +242,16 @@ def _server_error():
                             "Content-Length": str(len(body))}, body)
 
 
-def serve_native(app, method, path, raw_headers, raw_body):
+def serve_native(app, method, path, raw_headers, raw_body, ssr=None):
     """Single entry point for the native C runtime bridge.
 
     Takes raw request data from C, parses query string, cookies, and body
     (reusing the same logic as the Python transport), runs the handler, and
-    returns ``(status, headers_dict, body_bytes)``. The C bridge calls this
+    returns ``(status, headers, body_bytes)``. The C bridge calls this
     once per request: one native -> Python -> native crossing.
+
+    When ``ssr`` is provided (an SSRWorker), PageData is rendered to HTML.
+    Without ``ssr``, PageData falls back to the JSON dev representation.
     """
     from urllib.parse import urlparse, parse_qs
     from catba.context import Headers
@@ -262,4 +293,4 @@ def serve_native(app, method, path, raw_headers, raw_body):
     request = Request(method, parsed.path, headers=headers, query=query,
                       cookies=cookies, body=body)
     result = asyncio.run(app.handle(request))
-    return to_http(result)
+    return to_http(result, ssr=ssr)

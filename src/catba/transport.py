@@ -69,7 +69,8 @@ class _Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0) or 0)
         raw = self.rfile.read(length) if length else b""
         req = _make_request(self.command, self.path, dict(self.headers), raw)
-        status, headers, body = to_http(asyncio.run(self.server.app.handle(req)))
+        ssr = getattr(self.server, "ssr", None)
+        status, headers, body = to_http(asyncio.run(self.server.app.handle(req)), ssr=ssr)
         self.send_response(status)
         for name, value in headers.items():
             self.send_header(name, value)
@@ -89,14 +90,16 @@ class _Handler(BaseHTTPRequestHandler):
 class DevServer:
     """Runs the core behind an http.server. Disposable; replaced by native later."""
 
-    def __init__(self, app, host="127.0.0.1", port=8000):
+    def __init__(self, app, host="127.0.0.1", port=8000, ssr=None):
         self.app = app
         self.host = host
         self.port = port
+        self.ssr = ssr
 
     def serve(self):
         server = ThreadingHTTPServer((self.host, self.port), _Handler)
         server.app = self.app
+        server.ssr = self.ssr
         try:
             server.serve_forever()
         except KeyboardInterrupt:
