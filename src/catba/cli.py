@@ -51,10 +51,12 @@ def build_parser():
         "build",
         help="build the project for production (not implemented yet)",
     )
-    subparsers.add_parser(
+    p_start = subparsers.add_parser(
         "start",
-        help="run the built project (not implemented yet)",
+        help="run the project with the native C runtime",
     )
+    p_start.add_argument("--host", default="127.0.0.1")
+    p_start.add_argument("--port", type=int, default=8000)
     subparsers.add_parser(
         "install",
         help="install project dependencies from pyproject.toml",
@@ -70,6 +72,8 @@ def main(argv=None):
         return 0
     if args.command == "dev":
         return _dev(args)
+    if args.command == "start":
+        return _start(args)
     if args.command == "install":
         return _install()
     if args.command == "create":
@@ -95,6 +99,36 @@ def _dev(args):
     print(f"catba dev: http://{args.host}:{args.port}", file=sys.stderr)
     DevServer(app, host=args.host, port=args.port).serve()
     return 0
+
+
+def _start(args):
+    root = find_project_root()
+    if root is None:
+        print("catba start: no CatBa project found (need pyproject.toml and catba.py)",
+              file=sys.stderr)
+        return 1
+    app_dir = os.path.join(root, "app")
+
+    # Build the native runtime if not already built.
+    native_dir = os.path.join(os.path.dirname(__file__), "..", "..", "native")
+    native_dir = os.path.normpath(native_dir)
+    build_script = os.path.join(native_dir, "build.sh")
+    binary = os.path.join(native_dir, "build", "catba-native")
+
+    if not os.path.isfile(binary) or \
+       os.path.getmtime(build_script) > os.path.getmtime(binary):
+        print("catba start: building native runtime...", file=sys.stderr)
+        rc = subprocess.call(["bash", build_script, "server"])
+        if rc != 0:
+            print("catba start: native build failed", file=sys.stderr)
+            return 1
+
+    if not os.path.isfile(binary):
+        print("catba start: native binary not found after build", file=sys.stderr)
+        return 1
+
+    return subprocess.call([binary, "--app-dir", app_dir,
+                           "--host", args.host, "--port", str(args.port)])
 
 
 def _install():
