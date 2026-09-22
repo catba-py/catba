@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react-jsx",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "outDir": ".catba/generated/ts",
+    "rootDir": ".",
+    "paths": {
+      "@catba/pages/*": ["app/*"]
+    }
+  },
+  "include": ["app", ".catba/generated"]
+}

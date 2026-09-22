@@ -39,3 +39,8 @@ native/**/*.exe
 native/**/*.dll
 native/**/*.so
 native/**/*.dylib
+
+# Frontend / Node
+node_modules/
+npm-debug.log*
+.catba/generated/
