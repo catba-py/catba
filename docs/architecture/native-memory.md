@@ -221,10 +221,33 @@ depend on every call site remembering to free.
 
 ## Current implementation
 
-No native runtime exists. The `native/` directory is reserved and
-documented. No C source, build system, or toolchain is present. This
-document fixes the memory policy so the future native implementation can
-be evaluated against it.
+The native runtime is now implemented (Phase 3). The memory policy above is
+enforced by the code structure:
+
+- **Request arena**: `arena.h/c` implements a bump allocator with block growth.
+  All request-scoped allocations come from the arena. `cb_arena_release()` is
+  called exactly once per request, on both success and error paths. The
+  server loop in `server.c` guarantees this: `cb_arena_release(arena)` appears
+  after every branch in `process_request()`.
+
+- **Connection lifetime**: `socket.h/c` tracks the connection socket and
+  read buffer. `cb_connection_close()` frees the buffer and closes the
+  socket. Called after the keep-alive loop ends.
+
+- **CPython references**: `python_runtime.h/c` and `bridge.c` classify every
+  `PyObject *` as owned or borrowed. All owned references are released at a
+  single `cleanup:` label in the bridge, and on `cb_python_finalize()`.
+  See [python-bridge.md](python-bridge.md) for the full ownership table.
+
+- **Leak detection**: `SAN=asan ./build.sh tests` runs the native tests with
+  AddressSanitizer, UndefinedBehaviorSanitizer, and LeakSanitizer on
+  platforms that support them (Linux, macOS). On Windows MinGW (no ASan),
+  the `test_cleanup.c` test verifies cleanup behavior by exercising error
+  paths and multiple-request cycles.
+
+- **Size limits**: the HTTP parser enforces configurable limits (request line,
+  header count, header block, body size) to reject pathological input
+  without unbounded allocation.
 
 ---
 
