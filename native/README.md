@@ -1,24 +1,46 @@
-# native/
+# native/ - CatBa native C runtime
 
-Reserved for the future native C runtime of CatBa.
+Status: in development. The platform abstraction is implemented. Other
+components (arena, HTTP parser, socket transport, Python bridge) are added
+in subsequent commits.
 
-Nothing is implemented here yet. In particular there is no C source, no
-HTTP server, and no build system (CMake, Meson, Autotools, or otherwise).
-Those will be added when there is actual C code to build.
+## Build
 
-Intended future architecture:
+Requires a C compiler with C23 support (GCC 14+ or Clang 18+) and Python
+development headers.
 
-```text
-browser
-    |
-    v
-native C runtime
-    |
-    v
-Python application
+```bash
+cd native
+./build.sh tests     # build and run native tests
+./build.sh server     # build the server binary
+SAN=asan ./build.sh tests   # build with ASan + UBSan + LSan
 ```
 
-The native runtime will eventually serve as the high-performance layer
-between the browser and the Python application. The Python ↔ native bridge
-will use Cython where useful. None of that pipeline exists yet — this
-directory only reserves its home.
+The build discovers Python include and library paths from the active
+Python interpreter. It does not bundle Python.
+
+## Architecture
+
+```
+browser/curl
+    |
+    v
+native C runtime (socket, HTTP parser, response serializer)
+    |
+    v
+Python Core (route discovery, dispatch, return semantics)
+    |
+    v
+route.py
+```
+
+The native runtime owns transport and low-level HTTP. The Python Core owns
+application behavior. One crossing per request.
+
+See [../docs/architecture/native-runtime.md](../docs/architecture/native-runtime.md)
+for the full design.
+
+## Platform support
+
+Platform-specific code is isolated in `platform_win.c` and `platform_posix.c`.
+The rest of the runtime uses the abstraction in `platform.h`.

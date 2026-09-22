@@ -30,3 +30,12 @@ htmlcov/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Native build artifacts
+native/build/
+native/**/*.o
+native/**/*.obj
+native/**/*.exe
+native/**/*.dll
+native/**/*.so
+native/**/*.dylib
