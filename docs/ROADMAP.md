@@ -45,20 +45,24 @@ Bất kỳ tính năng nào được bổ sung theo roadmap đều phải tuân 
 
 ---
 
-### Phase 1: Thư viện Client `@catba/react` & Điều hướng Client-side
-*Mục tiêu: Cung cấp trải nghiệm SPA giống Next.js cho người dùng mà không cần reload trang.*
+### Phase 1: Tận dụng triệt để Inertia (@inertiajs/react) & Điều hướng Client-side
+*Mục tiêu: Đạt trải nghiệm SPA giống Next.js bằng cách tận dụng 100% hệ sinh thái chính thức `@inertiajs/react`, tuyệt đối không tự phát minh npm package riêng để tránh phân tán nguồn lực.*
 
-- [ ] **Xây dựng gói client `@catba/react`**:
-  - Tạo wrapper xung quanh `@inertiajs/react` hoặc cung cấp API mang phong cách CatBa.
-  - `<Link href="...">`: Tự động gửi Inertia visit khi click chuột, hỗ trợ `replace`, `preserveScroll`, `preserveState`.
-  - `useRouter()` / `router.visit(url, options)`: Điều hướng bằng code.
-  - `usePage()`: Hook lấy props và metadata của trang hiện tại.
-  - `useForm()`: Quản lý form state, tự động xử lý loading, validation errors, reset.
-- [ ] **Prefetching**:
-  - Prefetch dữ liệu khi người dùng hover vào `<Link>` (tương tự `next/link`).
-- [ ] **Trang lỗi & Fallbacks**:
-  - Hỗ trợ `404.tsx` và `500.tsx` tùy chỉnh.
-  - Error Boundary client-side để tránh crash ứng dụng khi component lỗi.
+- [ ] **Tích hợp chính thức `@inertiajs/react`**:
+  - Đưa `@inertiajs/react` vào `templates/app/package.json` và cấu hình client entry với `createInertiaApp`.
+  - Không xây dựng npm wrapper riêng; nhà phát triển dùng trực tiếp:
+    - `<Link href="...">`: SPA navigation siêu tốc, prefetch khi hover, giữ nguyên scroll position.
+    - `<Head>`: Quản lý dynamic title và thẻ meta SEO ngay trong component React.
+    - `usePage()`: Hook truy cập props, URL, component name và shared data.
+    - `useForm()`: Quản lý form state, tự động xử lý processing/loading, validation errors và reset.
+    - `router.visit()` / `router.get()` / `router.post()`: Điều hướng programmatic.
+- [ ] **Khởi tạo Client & SSR theo chuẩn Inertia**:
+  - Chuẩn hóa HTML template (`src/catba/html.py`) render root element chuẩn của Inertia `<div id="app" data-page="...">` với JSON page object đã escape an toàn.
+  - Cập nhật entry generator (`src/catba/manifest.py`) sử dụng `createInertiaApp` từ `@inertiajs/react`.
+- [ ] **Tận dụng tính năng cao cấp của Inertia**:
+  - Prefetching & Cache phía client.
+  - Polling (`router.poll`) và Deferred Props.
+  - Error Boundary & trang lỗi `404.tsx` / `500.tsx`.
 
 ---
 
