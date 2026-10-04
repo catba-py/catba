@@ -37,7 +37,7 @@ process.stdout.write(JSON.stringify({ ready: true }) + "\n")
 
 const rl = createInterface({ input: process.stdin })
 
-rl.on("line", (line) => {
+rl.on("line", async (line) => {
     let req
     try {
         req = JSON.parse(line)
@@ -47,10 +47,12 @@ rl.on("line", (line) => {
     }
 
     try {
-        const html = render(req.page, req.props)
-        process.stdout.write(JSON.stringify({ id: req.id, html }) + "\n")
+        const res = await render(req.page, req.props, req)
+        const html = typeof res === "string" ? res : (res && res.body) || ""
+        const head = (res && res.head) ? res.head.join("\n") : ""
+        process.stdout.write(JSON.stringify({ id: req.id, html, head }) + "\n")
     } catch (e) {
-        process.stdout.write(JSON.stringify({ id: req.id, error: e.message }) + "\n")
+        process.stdout.write(JSON.stringify({ id: req.id, error: e.message || String(e) }) + "\n")
     }
 })
 

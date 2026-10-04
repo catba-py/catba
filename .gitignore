@@ -44,3 +44,6 @@ native/**/*.dylib
 node_modules/
 npm-debug.log*
 .catba/generated/
+**/.catba/generated/
+templates/app/package-lock.json
+

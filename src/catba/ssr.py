@@ -97,7 +97,7 @@ class SSRWorker:
         from catba.assets import get_client_bundle_url
         self.client_bundle_url = get_client_bundle_url(self.project_root)
 
-    def render(self, page_id, props):
+    def render(self, page_id, props, url=None, version=None):
         """Render a page to HTML.
 
         Sends a render request to the Node worker and returns the HTML
@@ -109,7 +109,13 @@ class SSRWorker:
         req_id = self._next_id
         self._next_id += 1
 
-        request = json.dumps({"id": req_id, "page": page_id, "props": props})
+        payload = {"id": req_id, "page": page_id, "props": props}
+        if url is not None:
+            payload["url"] = url
+        if version is not None:
+            payload["version"] = version
+
+        request = json.dumps(payload)
         try:
             self.proc.stdin.write(request + "\n")
             self.proc.stdin.flush()
@@ -133,6 +139,7 @@ class SSRWorker:
         if html is None:
             raise SSRError("SSR worker response missing html field.")
 
+        self.last_head = resp.get("head", "")
         return html
 
     def stop(self):

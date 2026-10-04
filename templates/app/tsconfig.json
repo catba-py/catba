@@ -10,7 +10,7 @@
     "outDir": ".catba/generated/ts",
     "rootDir": ".",
     "paths": {
-      "@catba/pages/*": ["app/*"]
+      "@catba/pages/*": ["./app/*"]
     }
   },
   "include": ["app", ".catba/generated"]

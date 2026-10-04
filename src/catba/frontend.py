@@ -209,7 +209,7 @@ def prepare_frontend(app_dir, project_root):
     use_inertia = has_inertia_dependency(project_root)
 
     generate_manifest(pages, gen_dir)
-    generate_ssr_entry(pages, gen_dir)
+    generate_ssr_entry(pages, gen_dir, use_inertia=use_inertia)
     generate_client_entry(pages, gen_dir, use_inertia=use_inertia)
 
     build_ssr(project_root)

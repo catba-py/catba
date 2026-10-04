@@ -150,15 +150,6 @@ def _page_data_to_html(page_data, ssr, request=None):
     from catba.html import build_document
     from catba.inertia import get_asset_version
 
-    try:
-        html_fragment = ssr.render(page_data.page_path, page_data.props)
-    except Exception as e:
-        body = b"Internal Server Error"
-        return 500, {
-            "Content-Type": "text/plain; charset=utf-8",
-            "Content-Length": str(len(body)),
-        }, body
-
     url = page_data.page_path
     if request is not None:
         url = request.path
@@ -174,6 +165,22 @@ def _page_data_to_html(page_data, ssr, request=None):
 
     version = get_asset_version(project_root)
 
+    try:
+        if request is not None:
+            html_fragment = ssr.render(page_data.page_path, page_data.props, url=url, version=version)
+        else:
+            html_fragment = ssr.render(page_data.page_path, page_data.props)
+    except Exception as e:
+        import sys, traceback
+        traceback.print_exc(file=sys.stderr)
+        body = b"Internal Server Error"
+        return 500, {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Content-Length": str(len(body)),
+        }, body
+
+    head = getattr(ssr, "last_head", None)
+
     html = build_document(
         page_data.page_path,
         page_data.props,
@@ -181,6 +188,7 @@ def _page_data_to_html(page_data, ssr, request=None):
         client_bundle=getattr(ssr, "client_bundle_url", None),
         url=url,
         version=version,
+        head=head,
     )
     body = html.encode("utf-8")
     return 200, {

@@ -22,7 +22,7 @@ def _safe_script_json(data):
     return safe
 
 
-def build_document(page_id, props, html_fragment, client_bundle=None, url=None, version=None):
+def build_document(page_id, props, html_fragment, client_bundle=None, url=None, version=None, head=None):
     """Build a full HTML document with SSR content and hydration state.
 
     Parameters:
@@ -32,6 +32,7 @@ def build_document(page_id, props, html_fragment, client_bundle=None, url=None, 
         client_bundle - optional URL or path to the client JS bundle
         url           - optional request URL (for Inertia page object)
         version       - optional asset version string (for Inertia page object)
+        head          - optional SSR rendered head string (e.g. from Inertia Head)
 
     Returns a complete HTML document string.
     """
@@ -49,16 +50,27 @@ def build_document(page_id, props, html_fragment, client_bundle=None, url=None, 
     if client_bundle:
         script_tag = f'<script type="module" src="{_html_module.escape(client_bundle)}"></script>'
 
+    head_tags = head if head else "<title>CatBa</title>"
+
+    if 'id="catba-root"' in html_fragment:
+        body_content = html_fragment
+    else:
+        body_content = f'<div id="catba-root" data-catba-page="{escaped_page_id}" data-page="{escaped_page_json}">{html_fragment}</div>'
+
+    props_script = ""
+    if 'id="catba-props"' not in body_content:
+        props_script = f'<script id="catba-props" type="application/json">{props_json}</script>'
+
     return f"""<!doctype html>
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CatBa</title>
+{head_tags}
 </head>
 <body>
-<div id="catba-root" data-catba-page="{escaped_page_id}" data-page="{escaped_page_json}">{html_fragment}</div>
-<script id="catba-props" type="application/json">{props_json}</script>
+{body_content}
+{props_script}
 {script_tag}
 </body>
 </html>"""
