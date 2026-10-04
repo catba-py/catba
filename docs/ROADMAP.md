@@ -48,7 +48,7 @@ Bất kỳ tính năng nào được bổ sung theo roadmap đều phải tuân 
 ### Phase 1: Tận dụng triệt để Inertia (@inertiajs/react) & Điều hướng Client-side
 *Mục tiêu: Đạt trải nghiệm SPA giống Next.js bằng cách tận dụng 100% hệ sinh thái chính thức `@inertiajs/react`, tuyệt đối không tự phát minh npm package riêng để tránh phân tán nguồn lực.*
 
-- [ ] **Tích hợp chính thức `@inertiajs/react`**:
+- [x] **Tích hợp chính thức `@inertiajs/react`**:
   - Đưa `@inertiajs/react` vào `templates/app/package.json` và cấu hình client entry với `createInertiaApp`.
   - Không xây dựng npm wrapper riêng; nhà phát triển dùng trực tiếp:
     - `<Link href="...">`: SPA navigation siêu tốc, prefetch khi hover, giữ nguyên scroll position.
@@ -56,9 +56,9 @@ Bất kỳ tính năng nào được bổ sung theo roadmap đều phải tuân 
     - `usePage()`: Hook truy cập props, URL, component name và shared data.
     - `useForm()`: Quản lý form state, tự động xử lý processing/loading, validation errors và reset.
     - `router.visit()` / `router.get()` / `router.post()`: Điều hướng programmatic.
-- [ ] **Khởi tạo Client & SSR theo chuẩn Inertia**:
-  - Chuẩn hóa HTML template (`src/catba/html.py`) render root element chuẩn của Inertia `<div id="app" data-page="...">` với JSON page object đã escape an toàn.
-  - Cập nhật entry generator (`src/catba/manifest.py`) sử dụng `createInertiaApp` từ `@inertiajs/react`.
+- [x] **Khởi tạo Client & SSR theo chuẩn Inertia**:
+  - Chuẩn hóa HTML template (`src/catba/html.py`) render root element chuẩn của Inertia `<div id="catba-root" data-page="...">` với JSON page object đã escape an toàn.
+  - Cập nhật entry generator (`src/catba/manifest.py`) sử dụng `createInertiaApp` từ `@inertiajs/react` cho cả SSR worker và client hydration bundle.
 - [ ] **Tận dụng tính năng cao cấp của Inertia**:
   - Prefetching & Cache phía client.
   - Polling (`router.poll`) và Deferred Props.
@@ -69,13 +69,15 @@ Bất kỳ tính năng nào được bổ sung theo roadmap đều phải tuân 
 ### Phase 2: Nested Layouts & Cấu trúc phân cấp (Layout Hierarchy)
 *Mục tiêu: Đạt được tính năng cốt lõi của Next.js App Router — Persistent Layouts.*
 
-- [ ] **Hỗ trợ `layout.tsx` trong cây thư mục**:
+- [x] **Hỗ trợ `layout.tsx` trong cây thư mục**:
   - Cho phép mỗi cấp thư mục có một `layout.tsx`.
   - Component trang con được lồng vào layout cha qua prop `{children}`.
-- [ ] **Persistent Layout Engine**:
+- [x] **Persistent Layout Engine**:
   - Khi chuyển trang giữa 2 route cùng chung một `layout.tsx`, layout không bị unmount/remount (giữ nguyên scroll và state của sidebar/navbar).
-- [ ] **Tùy chọn `layout.py` (Server-side layout data)**:
+- [x] **Tùy chọn `layout.py` (Server-side layout data & Guards)**:
   - Cho phép layout có file `layout.py` đi kèm để fetch dữ liệu chung (ví dụ: thông tin user đăng nhập, danh mục menu chung) mà từng trang con không cần fetch lặp lại.
+  - Hỗ trợ hàm `before(ctx)` trong `layout.py` làm guard bảo vệ toàn bộ cây route con cho mọi HTTP method (`Redirect` / `HTTPError`).
+  - Hợp nhất props phân cấp tự động từ root layout xuống leaf route.
 - [ ] **File quy ước mở rộng**:
   - `loading.tsx`: Fallback skeleton hiển thị tức thì khi trang đang tải.
   - `error.tsx`: Bắt lỗi cục bộ cho từng phân vùng trang.
@@ -105,11 +107,13 @@ Bất kỳ tính năng nào được bổ sung theo roadmap đều phải tuân 
 - [ ] **Form Handling chuẩn mực**:
   - Handler `POST`, `PUT`, `DELETE` trong `route.py` nhận `ctx.body` đã được parse tự động (JSON hoặc Multipart FormData).
   - Tích hợp chuẩn CSRF token bảo vệ tự động cho mọi form mutation.
-- [ ] **Validation & Error Flashing**:
-  - Cơ chế trả về lỗi validation có cấu trúc (ví dụ: trả về `HTTPError(422, errors={...})` hoặc flash error).
-  - Client component tự động nhận lỗi qua `form.errors` để hiển thị trên UI mà không cần viết boilerplate fetch/axios.
-- [ ] **Automatic Re-fetch / Invalidation**:
-  - Sau khi `POST` thành công và redirect (hoặc trả về props mới), client tự động cập nhật props mà không reload toàn trang.
+- [x] **Validation & Error Flashing**:
+  - Cơ chế trả về lỗi validation có cấu trúc: `ValidationError(errors={...})` / `UnprocessableEntity` (HTTP 422).
+  - Client component tự động nhận lỗi qua `useForm().errors` để hiển thị trên UI mà không cần viết boilerplate fetch/axios.
+- [x] **Inertia Redirect & Mutation Flow**:
+  - Hỗ trợ `Redirect` có thể return hoặc raise trực tiếp từ handler/guard.
+  - Tiện ích `Redirect.back(ctx)` chuyển hướng quay lại trang trước.
+  - Tự động chuyển đổi external redirect thành `409 Conflict` + `X-Inertia-Location` cho Inertia client.
 
 ---
 

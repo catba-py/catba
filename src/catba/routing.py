@@ -39,6 +39,7 @@ class Route:
     pattern: list = field(default_factory=list)
     params: list = field(default_factory=list)
     has_page: bool = False
+    layout_paths: list = field(default_factory=list)
 
 
 def _pattern_for(rel):
@@ -145,6 +146,22 @@ def discover_routes(app_dir):
                     )
                 dynamic_at[key] = seg
         module_name = "catba_app_" + url.strip("/").replace("/", "_") if url.strip("/") else "catba_app_root"
+
+        # Discover layout.py files from app_dir down to root in hierarchy order
+        dirs_to_check = [app_dir]
+        if rel:
+            current = app_dir
+            for part in rel.replace("/", os.sep).split(os.sep):
+                if part:
+                    current = os.path.join(current, part)
+                    dirs_to_check.append(current)
+
+        layout_paths = []
+        for d in dirs_to_check:
+            layout_file = os.path.join(d, "layout.py")
+            if os.path.isfile(layout_file) and layout_file not in layout_paths:
+                layout_paths.append(layout_file)
+
         route = Route(
             url=url,
             fs_path=os.path.join(root, "route.py"),
@@ -152,6 +169,7 @@ def discover_routes(app_dir):
             pattern=pattern,
             params=params,
             has_page=("page.tsx" in files),
+            layout_paths=layout_paths,
         )
         table.add(route)
     return table

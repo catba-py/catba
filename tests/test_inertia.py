@@ -231,6 +231,71 @@ class TestInertiaToHttp(unittest.TestCase):
         self.assertNotIn("X-Inertia", headers)
         self.assertEqual(body, b"{}")
 
+    def test_inertia_external_redirect_returns_409(self):
+        from catba.runtime import HTTPResult, to_http
+        from catba.response import Redirect
+
+        req = Request(
+            "POST",
+            "/login",
+            headers=Headers({"X-Inertia": "true", "Host": "localhost:8000"}),
+        )
+        res = HTTPResult(*Redirect("https://github.com/login/oauth").to_http())
+        status, headers, body = to_http(res, request=req)
+
+        self.assertEqual(status, 409)
+        self.assertEqual(headers["X-Inertia-Location"], "https://github.com/login/oauth")
+        self.assertEqual(headers["Vary"], "X-Inertia")
+        self.assertEqual(body, b"")
+
+    def test_inertia_internal_redirect_preserves_303(self):
+        from catba.runtime import HTTPResult, to_http
+        from catba.response import Redirect
+
+        req = Request(
+            "POST",
+            "/todos",
+            headers=Headers({"X-Inertia": "true", "Host": "localhost:8000"}),
+        )
+        res = HTTPResult(*Redirect("/todos").to_http())
+        status, headers, body = to_http(res, request=req)
+
+        self.assertEqual(status, 303)
+        self.assertEqual(headers["Location"], "/todos")
+        self.assertEqual(headers["Vary"], "X-Inertia")
+
+    def test_inertia_validation_error_422(self):
+        from catba.runtime import HTTPResult, to_http
+        import json
+
+        req = Request(
+            "POST",
+            "/register",
+            headers=Headers({"X-Inertia": "true"}),
+        )
+        body = json.dumps({"errors": {"email": "Taken"}}).encode("utf-8")
+        res = HTTPResult(status=422, headers={"Content-Type": "application/json"}, body=body)
+        status, headers, body_out = to_http(res, request=req)
+
+        self.assertEqual(status, 422)
+        self.assertEqual(headers["X-Inertia"], "true")
+        self.assertEqual(headers["Vary"], "X-Inertia")
+        self.assertEqual(json.loads(body_out)["errors"]["email"], "Taken")
+
+
+class TestExternalUrl(unittest.TestCase):
+    def test_is_external_url(self):
+        from catba.inertia import is_external_url
+        from catba.context import Request, Headers
+
+        req = Request("GET", "/", headers=Headers({"Host": "catba.dev"}))
+        self.assertFalse(is_external_url("/local", req))
+        self.assertFalse(is_external_url("http://catba.dev/dashboard", req))
+        self.assertTrue(is_external_url("https://other.com/path", req))
+        self.assertTrue(is_external_url("//cdn.other.com/file", req))
+        self.assertFalse(is_external_url("", req))
+
 
 if __name__ == "__main__":
     unittest.main()
+

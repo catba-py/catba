@@ -23,6 +23,7 @@ from catba.response import (
     NotFound,
     Redirect,
     Response,
+    ValidationError,
 )
 from catba.routing import METHODS, Route, RouteTable, discover_routes
 
@@ -61,7 +62,24 @@ def to_http(result, ssr=None, request=None):
     Inertia JSON page object is returned instead of HTML.
     """
     if isinstance(result, HTTPResult):
-        return result.status, dict(result.headers), result.body
+        headers = dict(result.headers)
+        if request is not None:
+            from catba.inertia import (
+                add_vary_inertia,
+                inertia_location,
+                is_external_url,
+                is_inertia_request,
+            )
+            ctx = Context(request)
+            if is_inertia_request(ctx):
+                headers = add_vary_inertia(headers)
+                if result.status in (301, 302, 303, 307, 308):
+                    loc = headers.get("Location", "")
+                    if is_external_url(loc, request):
+                        return inertia_location(loc)
+                elif result.status == 422:
+                    headers["X-Inertia"] = "true"
+        return result.status, headers, result.body
     if isinstance(result, PageData):
         if request is not None:
             from catba.inertia import is_inertia_request
@@ -197,9 +215,14 @@ def _page_data_to_html(page_data, ssr, request=None):
     }, body
 
 
-def _load_module(route):
-    """Import a route.py by filesystem path, cached by module name."""
-    spec = importlib.util.spec_from_file_location(route.module_name, route.fs_path)
+def _load_module(module_name_or_route, fs_path=None):
+    """Import a route or layout module by filesystem path."""
+    if fs_path is None:
+        module_name = module_name_or_route.module_name
+        fs_path = module_name_or_route.fs_path
+    else:
+        module_name = module_name_or_route
+    spec = importlib.util.spec_from_file_location(module_name, fs_path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -223,11 +246,18 @@ class App:
         self.project_root = project_root
         self.table = discover_routes(app_dir)
         self._modules = {}
+        self._layout_modules = {}
 
     def _get_module(self, route):
         if route.module_name not in self._modules:
             self._modules[route.module_name] = _load_module(route)
         return self._modules[route.module_name]
+
+    def _get_layout_module(self, fs_path):
+        if fs_path not in self._layout_modules:
+            mod_name = "catba_layout_" + str(abs(hash(fs_path)))
+            self._layout_modules[fs_path] = _load_module(mod_name, fs_path)
+        return self._layout_modules[fs_path]
 
     async def handle(self, request):
         """Dispatch a Request, return a Result (HTTPResult or PageData)."""
@@ -265,18 +295,76 @@ class App:
         return _method_not_allowed(available)
 
     async def _invoke(self, module, request, method, route):
-        handler = getattr(module, method)
         ctx = Context(request)
+
+        # 1. Run layout before() guards (root to leaf)
         try:
-            if inspect.iscoroutinefunction(handler):
-                result = await handler(ctx)
-            else:
-                result = handler(ctx)
+            for layout_path in getattr(route, "layout_paths", []):
+                layout_mod = self._get_layout_module(layout_path)
+                before_fn = getattr(layout_mod, "before", None)
+                if callable(before_fn):
+                    if inspect.iscoroutinefunction(before_fn):
+                        res = await before_fn(ctx)
+                    else:
+                        res = before_fn(ctx)
+                    if res is not None:
+                        return _interpret(res, route)
+        except Redirect as r:
+            return _interpret(r, route)
         except HTTPError as e:
             return _http_error(e)
         except Exception:
             traceback.print_exc()
             return _server_error()
+
+        # 2. Run layout data fetching for GET / HEAD requests
+        layout_props = {}
+        if method in ("GET", "HEAD"):
+            try:
+                for layout_path in getattr(route, "layout_paths", []):
+                    layout_mod = self._get_layout_module(layout_path)
+                    data_fn = (
+                        getattr(layout_mod, "GET", None)
+                        or getattr(layout_mod, "get", None)
+                        or getattr(layout_mod, "layout", None)
+                        or getattr(layout_mod, "data", None)
+                    )
+                    if callable(data_fn):
+                        if inspect.iscoroutinefunction(data_fn):
+                            res = await data_fn(ctx)
+                        else:
+                            res = data_fn(ctx)
+                        if isinstance(res, (Response, Redirect, HTTPError)):
+                            return _interpret(res, route)
+                        if isinstance(res, dict):
+                            layout_props.update(res)
+            except Redirect as r:
+                return _interpret(r, route)
+            except HTTPError as e:
+                return _http_error(e)
+            except Exception:
+                traceback.print_exc()
+                return _server_error()
+
+        # 3. Run route handler
+        handler = getattr(module, method)
+        try:
+            if inspect.iscoroutinefunction(handler):
+                result = await handler(ctx)
+            else:
+                result = handler(ctx)
+        except Redirect as r:
+            return _interpret(r, route)
+        except HTTPError as e:
+            return _http_error(e)
+        except Exception:
+            traceback.print_exc()
+            return _server_error()
+
+        # 4. Merge layout props if handler returned a dict
+        if isinstance(result, dict) and layout_props:
+            result = {**layout_props, **result}
+
         return _interpret(result, route)
 
 
@@ -298,6 +386,8 @@ def _interpret(result, route):
     if isinstance(result, Redirect):
         status, headers, body = result.to_http()
         return HTTPResult(status, headers, body)
+    if isinstance(result, HTTPError):
+        return _http_error(result)
     if isinstance(result, dict):
         if route.has_page:
             return PageData(page_path=route.url, props=result)
@@ -328,6 +418,13 @@ def _method_not_allowed(available):
 
 
 def _http_error(e):
+    if isinstance(e, ValidationError) or (isinstance(e, HTTPError) and getattr(e, "errors", None) is not None):
+        body = json.dumps({"errors": e.errors}).encode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+            "Content-Length": str(len(body)),
+        }
+        return HTTPResult(e.status, headers, body)
     body = e.message.encode("utf-8")
     headers = {"Content-Type": "text/plain; charset=utf-8",
                "Content-Length": str(len(body))}

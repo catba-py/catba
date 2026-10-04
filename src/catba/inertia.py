@@ -109,6 +109,41 @@ def inertia_version_conflict(url, version):
     return 409, headers, b""
 
 
+def inertia_location(url):
+    """Build a 409 Conflict response for an external Inertia redirect.
+
+    Returns (status, headers, body) instructing the client to perform a
+    hard window.location redirect.
+    """
+    headers = {
+        "X-Inertia-Location": url,
+        "Content-Length": "0",
+        "Vary": "X-Inertia",
+    }
+    return 409, headers, b""
+
+
+def is_external_url(url, request=None):
+    """Return True if url points to an external origin.
+
+    A URL starting with http://, https://, or // is external unless its host
+    matches the request Host header. Relative paths (/foo) are never external.
+    """
+    if not url:
+        return False
+    if url.startswith("//"):
+        return True
+    if url.startswith("http://") or url.startswith("https://"):
+        if request is not None:
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            host = request.headers.get("Host", "").lower()
+            if host and parsed.netloc.lower() == host:
+                return False
+        return True
+    return False
+
+
 def add_vary_inertia(headers):
     """Add 'X-Inertia' to the Vary header without overwriting existing values."""
     existing = headers.get("Vary", "")

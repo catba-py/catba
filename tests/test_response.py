@@ -55,6 +55,48 @@ class TestRedirect(unittest.TestCase):
         status, _, _ = Redirect("/login", status=302).to_http()
         self.assertEqual(status, 302)
 
+    def test_redirect_can_be_raised(self):
+        r = Redirect("/somewhere")
+        self.assertIsInstance(r, Exception)
+
+    def test_redirect_back_with_referer(self):
+        from catba.context import Request, Context
+        req = Request("POST", "/submit", headers={"Referer": "/form"})
+        ctx = Context(req)
+        r = Redirect.back(ctx)
+        self.assertEqual(r.location, "/form")
+        self.assertEqual(r.status, 303)
+
+    def test_redirect_back_fallback(self):
+        from catba.context import Request, Context
+        req = Request("POST", "/submit", headers={})
+        ctx = Context(req)
+        r = Redirect.back(ctx, fallback="/home")
+        self.assertEqual(r.location, "/home")
+
+
+class TestValidationError(unittest.TestCase):
+    def test_validation_error_dict(self):
+        from catba import ValidationError, UnprocessableEntity
+        err = ValidationError({"email": "Required", "password": "Too short"})
+        self.assertEqual(err.status, 422)
+        self.assertEqual(err.errors["email"], "Required")
+        self.assertIsInstance(err, HTTPError)
+
+        err2 = UnprocessableEntity({"title": "Required"})
+        self.assertEqual(err2.status, 422)
+        self.assertEqual(err2.errors["title"], "Required")
+
+    def test_validation_error_list(self):
+        from catba import ValidationError
+        err = ValidationError(["Error 1", "Error 2"])
+        self.assertEqual(err.errors["_"], ["Error 1", "Error 2"])
+
+    def test_validation_error_string(self):
+        from catba import ValidationError
+        err = ValidationError("Invalid input")
+        self.assertEqual(err.errors["_"], "Invalid input")
+
 
 class TestErrors(unittest.TestCase):
     def test_not_found(self):
@@ -77,3 +119,4 @@ class TestErrors(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+

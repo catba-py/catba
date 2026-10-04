@@ -51,15 +51,25 @@ class JSON:
         return self.status, headers, body
 
 
-class Redirect:
-    """An HTTP redirect. Default status 303 See Other."""
+class Redirect(Exception):
+    """An HTTP redirect. Default status 303 See Other.
+
+    Can be returned or raised by route handlers and layout guards.
+    """
 
     def __init__(self, location, status=303):
         self.location = location
         self.status = status
+        super().__init__(f"Redirect to {location} ({status})")
 
     def to_http(self):
         return self.status, {"Location": self.location, "Content-Length": "0"}, b""
+
+    @classmethod
+    def back(cls, ctx, fallback="/", status=303):
+        """Redirect back to the referrer URL or fallback if missing."""
+        referer = ctx.headers.get("Referer") or ctx.headers.get("Referrer")
+        return cls(referer or fallback, status=status)
 
 
 class HTTPError(Exception):
@@ -92,6 +102,30 @@ class MethodNotAllowed(HTTPError):
         self.allowed = list(allowed) if allowed else []
 
 
+class ValidationError(HTTPError):
+    """Validation error (HTTP 422 Unprocessable Entity).
+
+    Compatible with Inertia useForm() and JSON APIs. Errors can be a dict
+    mapping field names to error messages, a list of errors, or a single message.
+    """
+
+    def __init__(self, errors=None, message="Validation Failed"):
+        super().__init__(422, message)
+        if isinstance(errors, dict):
+            self.errors = errors
+        elif isinstance(errors, (list, tuple)):
+            self.errors = {"_": list(errors)}
+        elif errors is not None:
+            self.errors = {"_": str(errors)}
+        else:
+            self.errors = {"_": message}
+
+
+class UnprocessableEntity(ValidationError):
+    """HTTP 422 Unprocessable Entity alias for ValidationError."""
+
+
 class InternalServerError(HTTPError):
     def __init__(self, message="Internal Server Error"):
         super().__init__(500, message)
+

@@ -11,6 +11,8 @@ from catba.response import (
     NotFound,
     Redirect,
     Response,
+    UnprocessableEntity,
+    ValidationError,
 )
 
 __all__ = [
@@ -23,4 +25,6 @@ __all__ = [
     "MethodNotAllowed",
     "BadRequest",
     "InternalServerError",
+    "ValidationError",
+    "UnprocessableEntity",
 ]
