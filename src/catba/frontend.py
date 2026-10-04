@@ -160,6 +160,22 @@ def find_client_bundle(project_root):
     return None
 
 
+def has_inertia_dependency(project_root):
+    """Check if package.json in project_root declares @inertiajs/react."""
+    import json
+    pkg_path = os.path.join(project_root, "package.json")
+    if os.path.isfile(pkg_path):
+        try:
+            with open(pkg_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            deps = data.get("dependencies", {})
+            dev_deps = data.get("devDependencies", {})
+            return "@inertiajs/react" in deps or "@inertiajs/react" in dev_deps
+        except Exception:
+            pass
+    return False
+
+
 def prepare_frontend(app_dir, project_root):
     """Prepare the frontend for SSR: generate entries, build bundles.
 
@@ -190,9 +206,11 @@ def prepare_frontend(app_dir, project_root):
     gen_dir = os.path.join(project_root, ".catba", "generated")
     os.makedirs(gen_dir, exist_ok=True)
 
+    use_inertia = has_inertia_dependency(project_root)
+
     generate_manifest(pages, gen_dir)
     generate_ssr_entry(pages, gen_dir)
-    generate_client_entry(pages, gen_dir)
+    generate_client_entry(pages, gen_dir, use_inertia=use_inertia)
 
     build_ssr(project_root)
     build_client(project_root)

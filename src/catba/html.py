@@ -22,7 +22,7 @@ def _safe_script_json(data):
     return safe
 
 
-def build_document(page_id, props, html_fragment, client_bundle=None):
+def build_document(page_id, props, html_fragment, client_bundle=None, url=None, version=None):
     """Build a full HTML document with SSR content and hydration state.
 
     Parameters:
@@ -30,11 +30,20 @@ def build_document(page_id, props, html_fragment, client_bundle=None):
         props         - the page props dict (JSON-serializable)
         html_fragment - the React SSR HTML string
         client_bundle - optional URL or path to the client JS bundle
+        url           - optional request URL (for Inertia page object)
+        version       - optional asset version string (for Inertia page object)
 
     Returns a complete HTML document string.
     """
     props_json = _safe_script_json(props)
     escaped_page_id = _html_module.escape(page_id)
+    page_object = {
+        "component": page_id,
+        "props": props,
+        "url": url if url is not None else page_id,
+        "version": version if version is not None else "dev",
+    }
+    escaped_page_json = _html_module.escape(json.dumps(page_object, ensure_ascii=False))
 
     script_tag = ""
     if client_bundle:
@@ -48,7 +57,7 @@ def build_document(page_id, props, html_fragment, client_bundle=None):
 <title>CatBa</title>
 </head>
 <body>
-<div id="catba-root" data-catba-page="{escaped_page_id}">{html_fragment}</div>
+<div id="catba-root" data-catba-page="{escaped_page_id}" data-page="{escaped_page_json}">{html_fragment}</div>
 <script id="catba-props" type="application/json">{props_json}</script>
 {script_tag}
 </body>

@@ -64,6 +64,13 @@ class TestHtmlDocument(unittest.TestCase):
         self.assertIn('"msg"', html)
         self.assertIn("hi", html)
 
+    def test_contains_inertia_data_page_attribute(self):
+        html = build_document("/dashboard", {"score": 100}, "<p>ok</p>", url="/dashboard?active=1", version="v123")
+        self.assertIn('data-page="', html)
+        self.assertIn('&quot;component&quot;: &quot;/dashboard&quot;', html)
+        self.assertIn('&quot;url&quot;: &quot;/dashboard?active=1&quot;', html)
+        self.assertIn('&quot;version&quot;: &quot;v123&quot;', html)
+
     def test_client_bundle_script(self):
         html = build_document("/", {}, "<div></div>", client_bundle="/assets/main.js")
         self.assertIn('<script type="module" src="/assets/main.js">', html)

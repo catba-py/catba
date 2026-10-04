@@ -66,6 +66,24 @@ class TestManifestGeneration(unittest.TestCase):
         self.assertIn("catba-root", content)
         self.assertIn("catba-props", content)
 
+    def test_client_entry_with_inertia(self):
+        path = generate_client_entry(self._pages(), self.gen, use_inertia=True)
+        self.assertTrue(os.path.isfile(path))
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn('import { createInertiaApp } from "@inertiajs/react"', content)
+        self.assertIn('createInertiaApp({', content)
+        self.assertIn('id: "catba-root"', content)
+        self.assertIn('hydrateRoot(el, createElement(App, props))', content)
+
+    def test_ssr_entry_supports_layout(self):
+        path = generate_ssr_entry(self._pages(), self.gen)
+        self.assertTrue(os.path.isfile(path))
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn('typeof Component.layout === "function"', content)
+        self.assertIn('Component.layout(page)', content)
+
     def test_empty_pages(self):
         pages = []
         generate_manifest(pages, self.gen)

@@ -9,7 +9,7 @@
     "build": "npm run build:ssr && npm run build:client"
   },
   "dependencies": {
-    "@inertiajs/react": "^2.0.0",
+    "@inertiajs/react": "^3.0.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"
   },

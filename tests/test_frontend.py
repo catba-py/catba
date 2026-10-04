@@ -99,5 +99,36 @@ class TestFindBundles(unittest.TestCase):
         self.assertTrue(result.endswith(".js"))
 
 
+class TestHasInertiaDependency(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = self.tmp.name
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_no_package_json(self):
+        from catba.frontend import has_inertia_dependency
+        self.assertFalse(has_inertia_dependency(self.root))
+
+    def test_without_inertia(self):
+        from catba.frontend import has_inertia_dependency
+        from tests.helpers import write_tree
+        write_tree(self.root, {"package.json": '{"dependencies": {"react": "^19.0.0"}}'})
+        self.assertFalse(has_inertia_dependency(self.root))
+
+    def test_with_inertia_in_dependencies(self):
+        from catba.frontend import has_inertia_dependency
+        from tests.helpers import write_tree
+        write_tree(self.root, {"package.json": '{"dependencies": {"@inertiajs/react": "^3.0.0"}}'})
+        self.assertTrue(has_inertia_dependency(self.root))
+
+    def test_with_inertia_in_dev_dependencies(self):
+        from catba.frontend import has_inertia_dependency
+        from tests.helpers import write_tree
+        write_tree(self.root, {"package.json": '{"devDependencies": {"@inertiajs/react": "^3.0.0"}}'})
+        self.assertTrue(has_inertia_dependency(self.root))
+
+
 if __name__ == "__main__":
     unittest.main()

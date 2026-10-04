@@ -69,7 +69,7 @@ def to_http(result, ssr=None, request=None):
             if is_inertia_request(ctx):
                 return _page_data_to_inertia(result, request, ctx, ssr)
         if ssr is not None:
-            return _page_data_to_html(result, ssr)
+            return _page_data_to_html(result, ssr, request=request)
         body = json.dumps(result.props).encode("utf-8")
         headers = {
             "Content-Type": "application/json",
@@ -140,7 +140,7 @@ def _page_data_to_inertia(page_data, request, ctx, ssr):
     return inertia_json_response(page_object)
 
 
-def _page_data_to_html(page_data, ssr):
+def _page_data_to_html(page_data, ssr, request=None):
     """Render PageData through the SSR worker into an HTML HTTP response.
 
     Calls the SSR worker to render the React component, wraps the HTML
@@ -148,6 +148,7 @@ def _page_data_to_html(page_data, ssr):
     the HTTP tuple.
     """
     from catba.html import build_document
+    from catba.inertia import get_asset_version
 
     try:
         html_fragment = ssr.render(page_data.page_path, page_data.props)
@@ -158,8 +159,29 @@ def _page_data_to_html(page_data, ssr):
             "Content-Length": str(len(body)),
         }, body
 
-    html = build_document(page_data.page_path, page_data.props, html_fragment,
-                          client_bundle=getattr(ssr, "client_bundle_url", None))
+    url = page_data.page_path
+    if request is not None:
+        url = request.path
+        if request.query:
+            from urllib.parse import urlencode
+            url = url + "?" + urlencode(request.query, doseq=True)
+
+    project_root = getattr(ssr, "project_root", None) if ssr else None
+    if project_root is None and request is not None:
+        project_root = getattr(request, "_project_root", None)
+    if project_root is None:
+        project_root = os.getcwd()
+
+    version = get_asset_version(project_root)
+
+    html = build_document(
+        page_data.page_path,
+        page_data.props,
+        html_fragment,
+        client_bundle=getattr(ssr, "client_bundle_url", None),
+        url=url,
+        version=version,
+    )
     body = html.encode("utf-8")
     return 200, {
         "Content-Type": "text/html; charset=utf-8",
