@@ -50,16 +50,24 @@ class PageData:
 Result = HTTPResult | PageData
 
 
-def to_http(result, ssr=None):
+def to_http(result, ssr=None, request=None):
     """Serialize a Result into an HTTP tuple (status, headers, body).
 
     PageData with an SSR worker is rendered to HTML. Without an SSR worker,
     PageData becomes a JSON response of the props with a marker header (the
     pre-SSR dev behavior). HTTPResult is always passed through directly.
+
+    If the request has X-Inertia: true and the result is PageData, an
+    Inertia JSON page object is returned instead of HTML.
     """
     if isinstance(result, HTTPResult):
         return result.status, dict(result.headers), result.body
     if isinstance(result, PageData):
+        if request is not None:
+            from catba.inertia import is_inertia_request
+            ctx = Context(request)
+            if is_inertia_request(ctx):
+                return _page_data_to_inertia(result, request, ctx, ssr)
         if ssr is not None:
             return _page_data_to_html(result, ssr)
         body = json.dumps(result.props).encode("utf-8")
@@ -70,6 +78,66 @@ def to_http(result, ssr=None):
         }
         return 200, headers, body
     raise TypeError(f"unknown result type: {type(result).__name__}")
+
+
+def _page_data_to_inertia(page_data, request, ctx, ssr):
+    """Convert PageData to an Inertia JSON page object response.
+
+    Checks for version conflicts and partial reloads before building the
+    page object. The SSR worker is not invoked for Inertia requests.
+    """
+    from catba.inertia import (
+        build_page_object,
+        get_asset_version,
+        get_inertia_version,
+        get_partial_component,
+        get_partial_data,
+        get_partial_except,
+        filter_partial_props,
+        inertia_json_response,
+        inertia_version_conflict,
+    )
+
+    project_root = getattr(ssr, "project_root", None) if ssr else None
+    if project_root is None:
+        project_root = getattr(request, "_project_root", None)
+    if project_root is None:
+        project_root = os.getcwd()
+
+    asset_version = get_asset_version(project_root)
+
+    # Version conflict check (GET only).
+    if request.method == "GET":
+        client_version = get_inertia_version(ctx)
+        if client_version is not None and client_version != asset_version:
+            url = request.path
+            if request.query:
+                from urllib.parse import urlencode
+                url = url + "?" + urlencode(request.query, doseq=True)
+            return inertia_version_conflict(url, asset_version)
+
+    props = page_data.props
+
+    # Partial reload filtering.
+    partial_component = get_partial_component(ctx)
+    if partial_component is not None and partial_component == page_data.page_path:
+        partial_data = get_partial_data(ctx)
+        partial_except = get_partial_except(ctx)
+        props = filter_partial_props(props, partial_data, partial_except)
+
+    # Build the URL with query string.
+    url = request.path
+    if request.query:
+        from urllib.parse import urlencode
+        url = url + "?" + urlencode(request.query, doseq=True)
+
+    page_object = build_page_object(
+        component=page_data.page_path,
+        props=props,
+        url=url,
+        version=asset_version,
+    )
+    return inertia_json_response(page_object)
 
 
 def _page_data_to_html(page_data, ssr):
@@ -306,7 +374,7 @@ def serve_native(app, method, path, raw_headers, raw_body, ssr=None):
     result = asyncio.run(app.handle(request))
     if ssr is None:
         ssr = getattr(app, "ssr", None)
-    return to_http(result, ssr=ssr)
+    return to_http(result, ssr=ssr, request=request)
 
 
 def prepare_native_ssr(app, app_dir, project_root):

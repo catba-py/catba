@@ -162,5 +162,75 @@ class TestResponses(unittest.TestCase):
         self.assertEqual(headers["Vary"], "X-Inertia")
 
 
+class TestInertiaToHttp(unittest.TestCase):
+    def test_page_data_with_inertia_header(self):
+        from catba.runtime import PageData, to_http
+        import json
+
+        req = Request("GET", "/about", headers=Headers({"X-Inertia": "true"}))
+        page = PageData("/about", {"title": "About Us"})
+        status, headers, body = to_http(page, request=req)
+
+        self.assertEqual(status, 200)
+        self.assertEqual(headers["Content-Type"], "application/json")
+        self.assertEqual(headers["X-Inertia"], "true")
+        self.assertEqual(headers["Vary"], "X-Inertia")
+        data = json.loads(body)
+        self.assertEqual(data["component"], "/about")
+        self.assertEqual(data["props"], {"title": "About Us"})
+        self.assertEqual(data["url"], "/about")
+
+    def test_page_data_version_conflict_409(self):
+        from catba.runtime import PageData, to_http
+
+        req = Request(
+            "GET",
+            "/dashboard",
+            headers=Headers({
+                "X-Inertia": "true",
+                "X-Inertia-Version": "outdated_v1",
+            }),
+            query={"tab": "1"},
+        )
+        page = PageData("/dashboard", {"user": "alice"})
+        status, headers, body = to_http(page, request=req)
+
+        self.assertEqual(status, 409)
+        self.assertEqual(headers["X-Inertia-Location"], "/dashboard?tab=1")
+        self.assertEqual(headers["Vary"], "X-Inertia")
+        self.assertEqual(body, b"")
+
+    def test_page_data_partial_reload(self):
+        from catba.runtime import PageData, to_http
+        import json
+
+        req = Request(
+            "GET",
+            "/users",
+            headers=Headers({
+                "X-Inertia": "true",
+                "X-Inertia-Partial-Component": "/users",
+                "X-Inertia-Partial-Data": "users",
+            }),
+        )
+        page = PageData("/users", {"users": ["alice", "bob"], "notifications": [1, 2]})
+        status, headers, body = to_http(page, request=req)
+
+        self.assertEqual(status, 200)
+        data = json.loads(body)
+        self.assertEqual(data["props"], {"users": ["alice", "bob"]})
+
+    def test_http_result_passes_through_regardless_of_inertia(self):
+        from catba.runtime import HTTPResult, to_http
+
+        req = Request("GET", "/api/data", headers=Headers({"X-Inertia": "true"}))
+        res = HTTPResult(status=201, headers={"Content-Type": "application/json"}, body=b"{}")
+        status, headers, body = to_http(res, request=req)
+
+        self.assertEqual(status, 201)
+        self.assertNotIn("X-Inertia", headers)
+        self.assertEqual(body, b"{}")
+
+
 if __name__ == "__main__":
     unittest.main()

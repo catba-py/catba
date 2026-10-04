@@ -84,8 +84,9 @@ class _Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0) or 0)
         raw = self.rfile.read(length) if length else b""
         req = _make_request(self.command, self.path, dict(self.headers), raw)
+        req._project_root = getattr(self.server, "project_root", None)
         ssr = getattr(self.server, "ssr", None)
-        status, headers, body = to_http(asyncio.run(self.server.app.handle(req)), ssr=ssr)
+        status, headers, body = to_http(asyncio.run(self.server.app.handle(req)), ssr=ssr, request=req)
         self.send_response(status)
         for name, value in headers.items():
             self.send_header(name, value)
