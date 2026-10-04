@@ -202,7 +202,7 @@ def prepare_frontend(app_dir, project_root):
     if not has_page_routes(table):
         return False
 
-    pages = discover_pages(table, project_root)
+    pages = discover_pages(table, project_root, app_dir=app_dir)
     gen_dir = os.path.join(project_root, ".catba", "generated")
     os.makedirs(gen_dir, exist_ok=True)
 

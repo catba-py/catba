@@ -80,5 +80,35 @@ class TestPageDiscovery(unittest.TestCase):
         self.assertEqual(ids, ["/", "/a", "/z"])
 
 
+    def test_root_layout_discovery(self):
+        table = self._table({
+            "app/route.py": "",
+            "app/page.tsx": "",
+            "app/layout.tsx": "",
+            "app/users/route.py": "",
+            "app/users/page.tsx": "",
+        })
+        pages = discover_pages(table, self.root)
+        self.assertEqual(pages[0].layout_paths, ["app/layout.tsx"])
+        self.assertEqual(pages[1].layout_paths, ["app/layout.tsx"])
+
+    def test_nested_layout_hierarchy(self):
+        table = self._table({
+            "app/route.py": "",
+            "app/page.tsx": "",
+            "app/layout.tsx": "",
+            "app/dashboard/route.py": "",
+            "app/dashboard/page.tsx": "",
+            "app/dashboard/layout.tsx": "",
+            "app/dashboard/settings/route.py": "",
+            "app/dashboard/settings/page.tsx": "",
+        })
+        pages = discover_pages(table, self.root)
+        by_id = {p.page_id: p.layout_paths for p in pages}
+        self.assertEqual(by_id["/"], ["app/layout.tsx"])
+        self.assertEqual(by_id["/dashboard"], ["app/layout.tsx", "app/dashboard/layout.tsx"])
+        self.assertEqual(by_id["/dashboard/settings"], ["app/layout.tsx", "app/dashboard/layout.tsx"])
+
+
 if __name__ == "__main__":
     unittest.main()

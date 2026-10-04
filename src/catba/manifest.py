@@ -31,6 +31,37 @@ def generate_manifest(pages, output_dir):
     return path
 
 
+def _generate_layout_code(pages):
+    """Generate layout imports and hierarchical Page.layout wiring lines."""
+    unique_layouts = []
+    layout_indices = {}
+    for p in pages:
+        for lp in getattr(p, "layout_paths", []):
+            if lp not in layout_indices:
+                layout_indices[lp] = len(unique_layouts)
+                unique_layouts.append(lp)
+
+    import_lines = []
+    for lp, idx in layout_indices.items():
+        rel = _relative_import(lp)
+        import_lines.append(f'import Layout{idx} from "{rel}"')
+
+    wire_lines = []
+    for i, p in enumerate(pages):
+        lps = getattr(p, "layout_paths", [])
+        if not lps:
+            continue
+        expr = "page"
+        for lp in reversed(lps):
+            idx = layout_indices[lp]
+            expr = f"createElement(Layout{idx}, null, {expr})"
+        wire_lines.append(f"if (typeof Page{i}.layout === \"undefined\") {{")
+        wire_lines.append(f"  Page{i}.layout = (page) => {expr}")
+        wire_lines.append("}")
+
+    return import_lines, wire_lines
+
+
 def generate_ssr_entry(pages, output_dir, use_inertia=False):
     """Write the Vite SSR entry file.
 
@@ -42,6 +73,7 @@ def generate_ssr_entry(pages, output_dir, use_inertia=False):
     Returns the path to the entry file.
     """
     os.makedirs(output_dir, exist_ok=True)
+    layout_imports, layout_wires = _generate_layout_code(pages)
 
     if use_inertia:
         lines = [
@@ -55,6 +87,14 @@ def generate_ssr_entry(pages, output_dir, use_inertia=False):
         for i, p in enumerate(pages):
             rel = _relative_import(p.module_path)
             lines.append(f'import Page{i} from "{rel}"')
+
+        if layout_imports:
+            lines.append("")
+            lines.extend(layout_imports)
+
+        if layout_wires:
+            lines.append("")
+            lines.extend(layout_wires)
 
         lines.append("")
         lines.append("const pages = {")
@@ -93,9 +133,16 @@ def generate_ssr_entry(pages, output_dir, use_inertia=False):
 
         # Import each page module.
         for i, p in enumerate(pages):
-            # Relative path from .catba/generated/ to the project root.
             rel = _relative_import(p.module_path)
             lines.append(f'import Page{i} from "{rel}"')
+
+        if layout_imports:
+            lines.append("")
+            lines.extend(layout_imports)
+
+        if layout_wires:
+            lines.append("")
+            lines.extend(layout_wires)
 
         lines.append("")
         lines.append("const pages = {")
@@ -132,6 +179,7 @@ def generate_client_entry(pages, output_dir, use_inertia=False):
     Returns the path to the entry file.
     """
     os.makedirs(output_dir, exist_ok=True)
+    layout_imports, layout_wires = _generate_layout_code(pages)
 
     if use_inertia:
         lines = [
@@ -145,6 +193,14 @@ def generate_client_entry(pages, output_dir, use_inertia=False):
         for i, p in enumerate(pages):
             rel = _relative_import(p.module_path)
             lines.append(f'import Page{i} from "{rel}"')
+
+        if layout_imports:
+            lines.append("")
+            lines.extend(layout_imports)
+
+        if layout_wires:
+            lines.append("")
+            lines.extend(layout_wires)
 
         lines.append("")
         lines.append("const pages = {")
@@ -174,6 +230,14 @@ def generate_client_entry(pages, output_dir, use_inertia=False):
             rel = _relative_import(p.module_path)
             lines.append(f'import Page{i} from "{rel}"')
 
+        if layout_imports:
+            lines.append("")
+            lines.extend(layout_imports)
+
+        if layout_wires:
+            lines.append("")
+            lines.extend(layout_wires)
+
         lines.append("")
         lines.append("const pages = {")
         for i, p in enumerate(pages):
@@ -194,7 +258,10 @@ def generate_client_entry(pages, output_dir, use_inertia=False):
         lines.append("  }")
         lines.append("  const Component = pages[pageId]")
         lines.append("  if (Component) {")
-        lines.append("    hydrateRoot(root, createElement(Component, props))")
+        lines.append("    const el = typeof Component.layout === \"function\"")
+        lines.append("      ? Component.layout(createElement(Component, props))")
+        lines.append("      : createElement(Component, props)")
+        lines.append("    hydrateRoot(root, el)")
         lines.append("  }")
         lines.append("}")
         lines.append("")

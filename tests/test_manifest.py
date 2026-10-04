@@ -97,10 +97,36 @@ class TestManifestGeneration(unittest.TestCase):
         self.assertIn("const pages = {", content)
 
     def test_generated_dir_created(self):
-        # Should create the directory if it does not exist.
         gen = os.path.join(self.root, "fresh", "generated")
         generate_manifest(self._pages(), gen)
         self.assertTrue(os.path.isdir(gen))
+
+    def test_layout_wiring_in_ssr(self):
+        pages = [
+            PageModule(page_id="/", module_path="app/page.tsx", layout_paths=["app/layout.tsx"]),
+            PageModule(
+                page_id="/dashboard",
+                module_path="app/dashboard/page.tsx",
+                layout_paths=["app/layout.tsx", "app/dashboard/layout.tsx"],
+            ),
+        ]
+        path = generate_ssr_entry(pages, self.gen, use_inertia=True)
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn('import Layout0 from "../../app/layout.tsx"', content)
+        self.assertIn('import Layout1 from "../../app/dashboard/layout.tsx"', content)
+        self.assertIn('Page0.layout = (page) => createElement(Layout0, null, page)', content)
+        self.assertIn('Page1.layout = (page) => createElement(Layout0, null, createElement(Layout1, null, page))', content)
+
+    def test_layout_wiring_in_client(self):
+        pages = [
+            PageModule(page_id="/", module_path="app/page.tsx", layout_paths=["app/layout.tsx"]),
+        ]
+        path = generate_client_entry(pages, self.gen, use_inertia=True)
+        with open(path, encoding="utf-8") as f:
+            content = f.read()
+        self.assertIn('import Layout0 from "../../app/layout.tsx"', content)
+        self.assertIn('Page0.layout = (page) => createElement(Layout0, null, page)', content)
 
 
 if __name__ == "__main__":
